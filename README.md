@@ -49,7 +49,7 @@ back to plain `sqlite3` if it's not there.
 | `tailor.py` | `get_fit_profile` | Reads returns + fit history; also the tool MUSE calls for the evaluator loop |
 | `care.py` | `resolve_contact` | Masks PII; flags upsell eligibility by loyalty tier |
 | `sentry.py` | `check_payment_policy` | Approves inside policy bounds, else writes a `pending` row to `escalations` |
-| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning |
+| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it |
 | `concierge.py` | `commit_subscription` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation |
 | `tally.py` | `get_loyalty_status`, `earn_points` | UC5, newly in scope. Points = amount × tier multiplier (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×); tier itself isn't recomputed from points (see below) |
 
@@ -109,6 +109,30 @@ the process's lifetime. Start Redis *before* `uvicorn`, or restart the
 API afterward — it won't notice Redis coming up mid-run. Fine for a
 demo; a production version would want to retry a failed connection
 instead of latching onto "unavailable" forever.
+
+## Recommendations that survive the session
+
+A returning customer should see today's search reflected even after
+their session expires (Redis TTL) or they show up on a different
+session_id entirely — and that has to come from durable storage, not
+session memory, or it wouldn't survive a restart either.
+
+`muse._log_search()` writes every returned SKU to `behavioural` as a
+`'search'` event right after ranking. The next call to `_candidates()`
+(any session, any day) reads `_recently_engaged_categories()` — categories
+browsed or searched in the last `ENGAGEMENT_WINDOW_HOURS` (24h, a rolling
+window rather than a calendar day, to sidestep timezone handling for the
+demo) — and both the fallback ranker and the live-model prompt give those
+categories a boost (`+1.5`, between the tier match's `+2` and the
+trending flag's `+1`).
+
+Verified with two separate `/chat` sessions for the same customer, no
+state shared between them except SQLite: session A's results include
+jeans at position 4 (not yet engaged); session B, a brand-new session_id
+right after, already shows jeans as `engaged: true` — because session A's
+visit was logged a moment earlier. PERSONA's `preference_tags` picks up
+the same rows for free, since it already read `behavioural` for exactly
+this purpose (§04) — MUSE was the one place a search wasn't durable yet.
 
 ## TALLY — the loyalty agent
 

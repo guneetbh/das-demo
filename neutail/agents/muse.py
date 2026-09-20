@@ -4,6 +4,14 @@ Ranks a persona-driven feed with the reasoning model tier, then runs
 the evaluator-optimizer loop from §03: every candidate's return-risk
 comes from TAILOR's get_fit_profile, called directly (Fig. 03's
 dashed feedback edge), before the feed goes back to the Orchestrator.
+
+Every ranking it returns is also logged to `behavioural` as a durable
+'search' event — not to session memory, which has a TTL and is meant to
+disappear, but to the same table PERSONA already reads for
+preference_tags. That's what makes "recommendations reflect today's
+search" survive a session (or a Redis restart): the next call to
+_candidates() sees it via ENGAGEMENT_WINDOW_HOURS, same as any other
+returning-customer signal.
 """
 
 import json
@@ -13,14 +21,17 @@ from neutail.agents import tailor  # noqa: F401 — import registers get_fit_pro
 from neutail.db import get_connection
 
 AGENT_NAME = "muse_agent"
+ENGAGEMENT_WINDOW_HOURS = 24  # "today", approximated as a rolling window rather than a calendar day
 
 SYSTEM_PROMPT = (
     "You are MUSE, a product-ranking agent for an apparel retailer. Given a customer "
-    "segment, a query, and a list of candidate SKUs (each with tier, price, trending flag "
-    "and return_risk from the fit-profile service), pick and rank the best matches. "
+    "segment, a query, and a list of candidate SKUs (each with tier, price, trending flag, "
+    "return_risk from the fit-profile service, and recently_engaged — whether the customer "
+    "searched or browsed this category in the last 24h), pick and rank the best matches. "
     "Prefer 'premium' items for the affluent segment and 'private_label' for the value "
-    "segment. Penalize high return_risk. Reply with ONLY a JSON array, best first, of "
-    "objects: {\"sku\": str, \"reason\": str (one short sentence)}."
+    "segment. Give recently_engaged items a modest boost, all else equal — this is a "
+    "returning customer, not a cold start. Penalize high return_risk. Reply with ONLY a "
+    "JSON array, best first, of objects: {\"sku\": str, \"reason\": str (one short sentence)}."
 )
 
 
@@ -42,6 +53,20 @@ def _in_stock(conn, sku: str) -> bool:
     return row["total"] > 0
 
 
+def _recently_engaged_categories(conn, customer_id: str) -> set[str]:
+    """Categories this customer browsed or searched in the last
+    ENGAGEMENT_WINDOW_HOURS, read straight from the durable behavioural
+    table — this is "today's search" surviving past the session."""
+    rows = conn.execute(
+        f"""SELECT DISTINCT c.category
+            FROM behavioural b JOIN catalogue c ON c.sku = b.sku
+            WHERE b.customer_id = ?
+              AND b.created_at >= datetime('now', '-{ENGAGEMENT_WINDOW_HOURS} hours')""",
+        (customer_id,),
+    ).fetchall()
+    return {row["category"] for row in rows}
+
+
 def _candidates(customer_id: str, query: str) -> list[dict]:
     tag = _infer_occasion_tag(query)
     conn = get_connection()
@@ -51,6 +76,8 @@ def _candidates(customer_id: str, query: str) -> list[dict]:
         ).fetchall()
     else:
         rows = conn.execute("SELECT * FROM catalogue").fetchall()
+
+    engaged_categories = _recently_engaged_categories(conn, customer_id)
 
     out = []
     for row in rows:
@@ -69,20 +96,39 @@ def _candidates(customer_id: str, query: str) -> list[dict]:
                 "tier": row["tier"],
                 "trending": bool(row["trending"]),
                 "return_risk": fit["return_risk"],
+                "recently_engaged": row["category"] in engaged_categories,
             }
         )
     conn.close()
     return out
 
 
+def _log_search(customer_id: str, results: list[dict]) -> None:
+    if not results:
+        return
+    conn = get_connection()
+    with conn:
+        conn.executemany(
+            "INSERT INTO behavioural (customer_id, event_type, sku) VALUES (?, 'search', ?)",
+            [(customer_id, r["sku"]) for r in results],
+        )
+    conn.close()
+
+
 def _fallback_rank(candidates: list[dict], segment: str, top_n: int) -> str:
     preferred_tier = "premium" if segment == "affluent" else "private_label"
     scored = []
     for c in candidates:
-        score = (2 if c["tier"] == preferred_tier else 0) + (1 if c["trending"] else 0) - c["return_risk"]
+        score = (
+            (2 if c["tier"] == preferred_tier else 0)
+            + (1.5 if c["recently_engaged"] else 0)
+            + (1 if c["trending"] else 0)
+            - c["return_risk"]
+        )
         reason = (
             f"{c['tier']} pick for the {segment} segment"
             + (", trending" if c["trending"] else "")
+            + (", seen earlier today" if c["recently_engaged"] else "")
             + f"; return-risk {c['return_risk']:.0%}"
         )
         scored.append({"sku": c["sku"], "reason": reason, "_score": score})
@@ -114,6 +160,7 @@ def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -
         ranked = json.loads(_fallback_rank(candidates, segment, top_n))
         results = [{**by_sku[item["sku"]], "reason": item["reason"]} for item in ranked if item["sku"] in by_sku]
 
+    _log_search(customer_id, results)
     return {"query": query, "segment": segment, "used_live_model": live, "results": results}
 
 
