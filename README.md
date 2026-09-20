@@ -9,7 +9,10 @@ no external services required to run it.
 pip install -r requirements.txt
 python3 -m neutail.seed                        # once, creates and populates data/neutail.db
 python3 run_demo.py                             # walks the §06 demo script end to end, no server needed
-uvicorn neutail.api:app --reload --port 8000    # the Agent Mesh Service (Fig. 04), :8000
+
+# or the full stack from Fig. 04:
+uvicorn neutail.api:app --reload --port 8000    # Agent Mesh Service, :8000
+streamlit run streamlit_app.py                  # Streamlit Client, :8501 — needs the API running first
 ```
 
 Set `ANTHROPIC_API_KEY` to make MUSE and CONCIERGE call a live reasoning
@@ -30,6 +33,7 @@ the rest of the agent core is plain `sqlite3`.
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing, the confidence-check self-loop, session memory |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
+| `streamlit_app.py` | Streamlit Client (Fig. 04) — chat tab over `/chat`, review tab over `/escalations`, :8501 |
 
 **Agents** — each ~40–100 lines, same shape: register a tool contract, implement it, expose `run()` that goes through the runtime.
 
@@ -76,8 +80,8 @@ Read via `runtime.recent_audit_log(limit)` (or `GET /audit`) — a plain `SELECT
 
 ## What's not built yet
 
-- The Streamlit layer from §08 — the API exists now, but there's no chat UI or human-review tab in front of it yet, just `run_demo.py` (CLI) and raw HTTP.
 - No auth on the API — `caller` in `/tools/{name}/invoke` is self-declared by whoever calls it. Fine for a demo where the runtime is the trust boundary; not fine if this endpoint were ever reachable by an untrusted client.
+- The Streamlit UI hasn't been browser-tested (no browser tooling was available while building it) — it compiles clean and the server boots with no traceback, and every field it reads matches the API responses verified via curl, but a real click-through is still outstanding.
 - GRADE and SCOUT — out of scope per §01, their signals are pre-seeded directly into `catalogue.trending` and `returns.reason_code`.
 - No git repository yet — none of this is committed anywhere.
 - Intent classification is keyword-based, not a model call — deliberate, so routing doesn't pay reasoning-model latency and the confidence check stays legible; would be the first thing to swap for a real classifier past the demo stage.

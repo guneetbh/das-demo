@@ -1,5 +1,7 @@
-fastapi>=0.115
+fastapi>=0.141
 uvicorn>=0.30
+streamlit>=1.64
+requests>=2.32
 
 # Optional — only needed if ANTHROPIC_API_KEY is set and MUSE/CONCIERGE
 # should call a live reasoning model instead of falling back to the
