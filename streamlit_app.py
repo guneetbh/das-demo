@@ -64,6 +64,14 @@ with chat_tab:
             st.session_state.messages = []
             st.rerun()
 
+        st.divider()
+        st.subheader("Loyalty (TALLY)")
+        loyalty = api_get(f"/customers/{customer_id}/loyalty")
+        col_tier, col_points = st.columns(2)
+        col_tier.metric("Tier", loyalty["tier"])
+        col_points.metric("Points", f"{loyalty['points_balance']:,}")
+        st.caption(f"{loyalty['multiplier']}× multiplier · ${loyalty['ytd_spend']:,.2f} YTD spend")
+
     for role, content in st.session_state.get("messages", []):
         with st.chat_message(role):
             st.markdown(content)
@@ -111,9 +119,12 @@ with chat_tab:
                     st.markdown(result["offer_text"])
                     reply = f"Escalated (id {result['escalation_id']}): {result['reason']}"
                 else:
-                    st.success(f"✅ Subscription committed — order {result['order_id']}")
+                    st.success(
+                        f"✅ Subscription committed — order {result['order_id']} · "
+                        f"+{result['points_earned']} pts (balance {result['points_balance']:,})"
+                    )
                     st.markdown(result["offer_text"])
-                    reply = f"Committed: {result['order_id']}"
+                    reply = f"Committed: {result['order_id']} (+{result['points_earned']} pts)"
             else:
                 st.json(result)
                 reply = str(result)
@@ -147,7 +158,10 @@ with review_tab:
                 out = api_post(f"/escalations/{esc['escalation_id']}/resolve", {
                     "approve": True, "resolved_by": "streamlit_reviewer",
                 })
-                st.success(f"Approved — order {out.get('order_id')}")
+                st.success(
+                    f"Approved — order {out.get('order_id')} · "
+                    f"+{out.get('points_earned')} pts (balance {out.get('points_balance')})"
+                )
                 st.rerun()
             if col_deny.button("❌ Deny", key=f"deny-{esc['escalation_id']}"):
                 api_post(f"/escalations/{esc['escalation_id']}/resolve", {

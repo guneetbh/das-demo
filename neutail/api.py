@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from neutail import contracts, human_review, orchestrator, policy, runtime
+from neutail.agents import tally
 
 app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0")
 
@@ -65,6 +66,16 @@ def chat(body: ChatRequest) -> dict:
 @app.get("/audit")
 def audit(limit: int = 20) -> dict:
     return {"entries": runtime.recent_audit_log(limit)}
+
+
+@app.get("/customers/{customer_id}/loyalty")
+def loyalty_status(customer_id: str) -> dict:
+    """Read-only — does not award points. TALLY's earn_points only fires
+    from a completed purchase (commit_subscription or an approved escalation)."""
+    try:
+        return tally.status(customer_id)
+    except ValueError as not_found:
+        raise HTTPException(status_code=404, detail=str(not_found))
 
 
 @app.get("/escalations")

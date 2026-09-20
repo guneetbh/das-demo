@@ -4,9 +4,10 @@ human reviewer (via the API) writes back through. Approving a pending
 subscription escalation completes the commit SENTRY paused.
 """
 
-import time
+import uuid
 
 from neutail import runtime
+from neutail.agents import tally  # noqa: F401 — registers earn_points
 from neutail.db import get_connection
 
 REVIEWER_CALLER = "human_reviewer"
@@ -45,7 +46,7 @@ def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REV
             (new_status, resolved_by, escalation_id),
         )
         if approve and row["kind"] == "subscription":
-            order_id = f"SUB-{row['customer_id']}-{int(time.time())}"
+            order_id = f"SUB-{row['customer_id']}-{uuid.uuid4().hex[:10]}"
             conn.execute(
                 """INSERT INTO transactional (order_id, customer_id, sku, kind, amount)
                    VALUES (?, ?, NULL, 'subscription', ?)""",
@@ -53,8 +54,17 @@ def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REV
             )
     conn.close()
 
+    points = None
+    if order_id is not None:
+        # the order landed, same as CONCIERGE's direct-approval path — TALLY earns points either way
+        points = tally.run(row["customer_id"], row["amount"], source="subscription")
+
     runtime.log_event(
         resolved_by, "resolve_escalation", allowed=True,
         detail=f"escalation_id={escalation_id} status={new_status} order_id={order_id}",
     )
-    return {"escalation_id": escalation_id, "status": new_status, "order_id": order_id}
+    result = {"escalation_id": escalation_id, "status": new_status, "order_id": order_id}
+    if points is not None:
+        result["points_earned"] = points["points_earned"]
+        result["points_balance"] = points["points_balance"]
+    return result

@@ -1,15 +1,17 @@
 """CONCIERGE — UC4 upsell (§04: provides commit_subscription).
 
-Requires resolve_contact (CARE) and check_payment_policy (SENTRY) per
-Fig. 03. When SENTRY escalates instead of approving, CONCIERGE doesn't
-treat that as a denial — it reports the pending review back, same as
-the demo script's second upsell run (§06 step 6).
+Requires resolve_contact (CARE), check_payment_policy (SENTRY), and now
+earn_points (TALLY) per Fig. 03. When SENTRY escalates instead of
+approving, CONCIERGE doesn't treat that as a denial — it reports the
+pending review back, same as the demo script's second upsell run
+(§06 step 6). Points are only earned once the order actually lands,
+so the escalated branch doesn't call TALLY at all.
 """
 
-import time
+import uuid
 
 from neutail import contracts, gateway, runtime
-from neutail.agents import care, sentry  # noqa: F401 — registers resolve_contact, check_payment_policy
+from neutail.agents import care, sentry, tally  # noqa: F401 — registers resolve_contact, check_payment_policy, earn_points
 from neutail.db import get_connection
 
 AGENT_NAME = "concierge_agent"
@@ -62,7 +64,7 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
             "reason": policy_result["reason"],
         }
 
-    order_id = f"SUB-{customer_id}-{int(time.time())}"
+    order_id = f"SUB-{customer_id}-{uuid.uuid4().hex[:10]}"
     conn = get_connection()
     with conn:
         conn.execute(
@@ -71,6 +73,8 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
         )
     conn.close()
 
+    points = runtime.invoke_tool(AGENT_NAME, "earn_points", customer_id=customer_id, amount=amount, source="subscription")
+
     return {
         "offered": True,
         "offer_text": offer_text,
@@ -78,6 +82,8 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
         "committed": True,
         "escalated": False,
         "order_id": order_id,
+        "points_earned": points["points_earned"],
+        "points_balance": points["points_balance"],
     }
 
 
