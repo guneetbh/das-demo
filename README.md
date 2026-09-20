@@ -13,13 +13,16 @@ python3 -m neutail.seed                        # once, creates and populates dat
 python3 run_demo.py                             # walks the §06 demo script end to end, no server needed
 
 # or the full stack from Fig. 04:
+redis-server &                                  # optional — session memory uses it when reachable
 uvicorn neutail.api:app --reload --port 8000    # Agent Mesh Service, :8000
 streamlit run streamlit_app.py                  # Streamlit Client, :8501 — needs the API running first
 ```
 
 Set `ANTHROPIC_API_KEY` to make MUSE and CONCIERGE call a live reasoning
-model instead of their deterministic fallbacks. Nothing else needs it —
-the rest of the agent core is plain `sqlite3`.
+model instead of their deterministic fallbacks. Start a Redis server
+(`brew install redis && redis-server`) to move session memory off SQLite
+and onto Redis with a real TTL. Neither is required — everything falls
+back to plain `sqlite3` if it's not there.
 
 ## What's here
 
@@ -27,12 +30,13 @@ the rest of the agent core is plain `sqlite3`.
 
 | File | Role |
 |---|---|
-| `neutail/db.py`, `schema.sql` | The embedded store — 9 tables + `session_context` (short-term memory) + `audit_log` |
+| `neutail/db.py`, `schema.sql` | The embedded store — 9 tables + `session_context` (SQLite fallback for short-term memory) + `audit_log` |
 | `neutail/contracts.py` | Tool contract registry — name, allowed callers, handler |
 | `neutail/policy.py` | Policy engine — default-deny, caller must be on the tool's allow-list |
 | `neutail/runtime.py` | Agent Runtime — `invoke_tool()`, the one path every tool call takes; policy-checks and audit-logs every call |
 | `neutail/gateway.py` | Model Gateway — routes to a live Claude call when `ANTHROPIC_API_KEY` is set, else a deterministic fallback the caller supplies |
-| `neutail/orchestrator.py` | Lead Orchestrator — intent routing, the confidence-check self-loop, session memory |
+| `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
+| `neutail/orchestrator.py` | Lead Orchestrator — intent routing, the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
 | `streamlit_app.py` | Streamlit Client (Fig. 04) — chat tab over `/chat`, review tab over `/escalations`, :8501 |
@@ -75,6 +79,36 @@ existed.
 - `human_review.resolve_escalation()` logs the reviewer's decision through the same public `runtime.log_event()` hook, so a human's approve/deny shows up in the same trail as an agent's tool call.
 
 Read via `runtime.recent_audit_log(limit)` (or `GET /audit`) — a plain `SELECT ... ORDER BY log_id DESC`. No separate audit service.
+
+## Session memory: Redis or SQLite
+
+`session_store.py` holds only the short-term tier from §07 — `segment`,
+`last_results`, `last_category_by_sku` per session, the state that makes
+"the second one, in my size" resolve without restating anything. The
+durable tier (customers, loyalty, fit_profile, transactional, ...) never
+moves; it's what makes cross-session memory (§06 step ⑦) work with no
+special-case code — PERSONA and TAILOR just re-read those tables live on
+a new session.
+
+On first use per process, `session_store` tries `redis.Redis.ping()`
+against `REDIS_URL` (default `redis://localhost:6379/0`); if that
+succeeds, every `save`/`load` goes to Redis with a 30-minute TTL
+(`SESSION_TTL_SECONDS`) instead of sitting in SQLite forever. If Redis
+isn't reachable, or the ping fails, it falls back to the original
+`session_context` table — same shape the Model Gateway uses for
+reasoning-model calls. `GET /health` reports which one is live
+(`session_backend`), and the chat sidebar shows it as a small badge.
+
+Verified both ways: with `redis-server` running, `redis-cli keys
+"session:*"` shows the three keys with a 1800s TTL, and a follow-up
+message resolves correctly from them; with Redis stopped, the same two
+messages produce the identical result via SQLite, no code path changes.
+
+One tradeoff worth naming: availability is checked once and cached for
+the process's lifetime. Start Redis *before* `uvicorn`, or restart the
+API afterward — it won't notice Redis coming up mid-run. Fine for a
+demo; a production version would want to retry a failed connection
+instead of latching onto "unavailable" forever.
 
 ## TALLY — the loyalty agent
 

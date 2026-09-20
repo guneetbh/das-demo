@@ -5,6 +5,10 @@ requests>=2.32
 
 # Optional — only needed if ANTHROPIC_API_KEY is set and MUSE/CONCIERGE
 # should call a live reasoning model instead of falling back to the
-# deterministic ranker/template. Everything else in the agent core has
-# no external dependencies beyond FastAPI (stdlib sqlite3 for the rest).
+# deterministic ranker/template.
 anthropic>=0.40
+
+# Optional — only needed if a Redis server is reachable and session
+# memory should live there (with a TTL) instead of falling back to the
+# SQLite session_context table. `brew install redis && redis-server`.
+redis>=5.0

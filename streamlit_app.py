@@ -30,16 +30,18 @@ def api_post(path: str, body: dict):
     return resp.json()
 
 
-def api_healthy() -> bool:
+def api_health():
     try:
-        return requests.get(f"{API_BASE}/health", timeout=2).ok
+        resp = requests.get(f"{API_BASE}/health", timeout=2)
+        return resp.json() if resp.ok else None
     except requests.RequestException:
-        return False
+        return None
 
 
 chat_tab, review_tab = st.tabs(["💬 Demo chat", "🛡️ Human review queue"])
 
-if not api_healthy():
+health = api_health()
+if health is None:
     st.error(
         f"Can't reach the Agent Mesh Service at {API_BASE}. "
         "Start it first: `uvicorn neutail.api:app --port 8000`"
@@ -58,7 +60,10 @@ with chat_tab:
             st.session_state.session_id = f"ui-{customer_id}-{uuid.uuid4().hex[:8]}"
             st.session_state._customer = customer_id
             st.session_state.messages = []
+        backend = health["session_backend"]
+        badge = "🟥 redis" if backend == "redis" else "🟦 sqlite (fallback)"
         st.text(f"session_id: {st.session_state.session_id}")
+        st.caption(f"session memory backend: {badge}")
         if st.button("New session (simulate 'next day')"):
             st.session_state.session_id = f"ui-{customer_id}-{uuid.uuid4().hex[:8]}"
             st.session_state.messages = []

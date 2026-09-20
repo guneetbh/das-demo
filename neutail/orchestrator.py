@@ -6,10 +6,8 @@ question instead of committing to a specialist blind (Fig. 01/02's
 self-loop on this box).
 """
 
-import json
-
+from neutail import session_store
 from neutail.agents import care, concierge, muse, persona, tailor
-from neutail.db import get_connection
 
 CONFIDENCE_THRESHOLD = 0.5
 
@@ -30,29 +28,8 @@ def classify_intent(message: str) -> tuple[str, float]:
     return "unknown", 0.2
 
 
-def _save_session(session_id: str, key: str, value) -> None:
-    conn = get_connection()
-    with conn:
-        conn.execute(
-            """INSERT INTO session_context (session_id, key, value, updated_at)
-               VALUES (?, ?, ?, datetime('now'))
-               ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
-            (session_id, key, json.dumps(value)),
-        )
-    conn.close()
-
-
-def _load_session(session_id: str, key: str):
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT value FROM session_context WHERE session_id = ? AND key = ?", (session_id, key)
-    ).fetchone()
-    conn.close()
-    return json.loads(row["value"]) if row else None
-
-
 def _resolve_ordinal_reference(message: str, session_id: str) -> tuple[str | None, str | None]:
-    last_results = _load_session(session_id, "last_results") or []
+    last_results = session_store.load(session_id, "last_results") or []
     if not last_results:
         return None, None
     q = message.lower()
@@ -60,7 +37,7 @@ def _resolve_ordinal_reference(message: str, session_id: str) -> tuple[str | Non
     if idx >= len(last_results):
         idx = 0
     sku = last_results[idx]
-    category_map = _load_session(session_id, "last_category_by_sku") or {}
+    category_map = session_store.load(session_id, "last_category_by_sku") or {}
     return sku, category_map.get(sku)
 
 
@@ -80,9 +57,9 @@ def handle_message(session_id: str, customer_id: str, message: str) -> dict:
     if intent == "discovery":
         segment = persona.run(customer_id)["segment"]
         ranked = muse.run(customer_id, segment, message, top_n=4)
-        _save_session(session_id, "segment", segment)
-        _save_session(session_id, "last_results", [r["sku"] for r in ranked["results"]])
-        _save_session(session_id, "last_category_by_sku", {r["sku"]: r["category"] for r in ranked["results"]})
+        session_store.save(session_id, "segment", segment)
+        session_store.save(session_id, "last_results", [r["sku"] for r in ranked["results"]])
+        session_store.save(session_id, "last_category_by_sku", {r["sku"]: r["category"] for r in ranked["results"]})
         return {
             "type": "discovery",
             "intent": intent,

@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from neutail import contracts, human_review, orchestrator, policy, runtime
+from neutail import contracts, human_review, orchestrator, policy, runtime, session_store
 from neutail.agents import tally
 
 app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0")
@@ -34,7 +34,7 @@ class ResolveEscalationRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "session_backend": session_store.backend()}
 
 
 @app.get("/tools")
