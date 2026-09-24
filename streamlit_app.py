@@ -24,7 +24,14 @@ def api_get(path: str, **params):
 
 
 def api_post(path: str, body: dict):
-    resp = requests.post(f"{API_BASE}{path}", json=body, timeout=30)
+    # 60s, not 30s — a live /chat call routinely takes 15-20s (Opus reasoning
+    # over the pre-filtered candidate prompt), and a timeout or connection
+    # error here used to raise unhandled, which Streamlit renders as a raw
+    # traceback instead of a chat message.
+    try:
+        resp = requests.post(f"{API_BASE}{path}", json=body, timeout=60)
+    except requests.RequestException as exc:
+        return {"error": "connection", "detail": str(exc)}
     if resp.status_code >= 400:
         return {"error": resp.status_code, "detail": resp.json().get("detail", resp.text)}
     return resp.json()
@@ -87,11 +94,12 @@ with chat_tab:
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        result = api_post("/chat", {
-            "session_id": st.session_state.session_id,
-            "customer_id": customer_id,
-            "message": prompt,
-        })
+        with st.spinner("Thinking... (can take 15-20s with a live model call)"):
+            result = api_post("/chat", {
+                "session_id": st.session_state.session_id,
+                "customer_id": customer_id,
+                "message": prompt,
+            })
 
         with st.chat_message("assistant"):
             if "error" in result:
