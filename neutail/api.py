@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from neutail import contracts, human_review, orchestrator, policy, runtime, session_store
+from neutail import admin, contracts, human_review, orchestrator, policy, runtime, session_store
 from neutail.agents import tally
 
 app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0")
@@ -76,6 +76,14 @@ def loyalty_status(customer_id: str) -> dict:
         return tally.status(customer_id)
     except ValueError as not_found:
         raise HTTPException(status_code=404, detail=str(not_found))
+
+
+@app.get("/admin/outcomes")
+def admin_outcomes() -> dict:
+    """Business outcomes the prototype targets (§09) — computed from the
+    seeded population, not asserted constants. See neutail/admin.py for
+    what each number does and doesn't claim."""
+    return admin.business_outcomes()
 
 
 @app.get("/escalations")

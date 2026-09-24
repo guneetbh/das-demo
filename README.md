@@ -46,10 +46,10 @@ back to plain `sqlite3` if it's not there.
 | Agent | Provides | Notes |
 |---|---|---|
 | `persona.py` | `get_customer_segment` | Reads CRM + loyalty + behavioural live; segment is never stored |
-| `tailor.py` | `get_fit_profile` | Reads returns + fit history; also the tool MUSE calls for the evaluator loop |
+| `tailor.py` | `get_fit_profile` | Reads returns + fit history; return-risk baseline is computed per-category from seeded orders/returns, not a hardcoded constant; also the tool MUSE calls for the evaluator loop |
 | `care.py` | `resolve_contact` | Masks PII; flags upsell eligibility by loyalty tier |
 | `sentry.py` | `check_payment_policy` | Approves inside policy bounds, else writes a `pending` row to `escalations` |
-| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it |
+| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots |
 | `concierge.py` | `commit_subscription` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation |
 | `tally.py` | `get_loyalty_status`, `earn_points` | UC5, newly in scope. Points = amount × tier multiplier (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×); tier itself isn't recomputed from points (see below) |
 
@@ -134,6 +134,86 @@ visit was logged a moment earlier. PERSONA's `preference_tags` picks up
 the same rows for free, since it already read `behavioural` for exactly
 this purpose (§04) — MUSE was the one place a search wasn't durable yet.
 
+## Seed data at build-requirement scale
+
+`neutail/seed.py` generates a population meeting the stated scale target
+— 30-50 customers, 1,000+ SKUs, 12 months of transactions, and a returns
+history that lands near a 34% baseline — layered *on top of* the original
+2 hand-authored "hero" customers and 16 hand-authored SKUs, which are
+untouched so the §06 demo script still runs exactly as before.
+
+- **Repeatable, not frozen** — a fixed `RNG_SEED` means `python -m
+  neutail.seed` always produces the same database (verified: two fresh
+  runs, identical `SUM(points_balance)` and `SUM(ytd_spend)` to the
+  cent). "Repeatable" here means deterministic generation, not that
+  calendar dates are frozen — transaction dates are still relative to
+  when you run it.
+- **Computed, not asserted** — `loyalty.points_balance`/`ytd_spend` for
+  the generated population come from summing actual generated
+  transactions through the same `TIER_MULTIPLIER` table `tally.py` uses
+  live, imported directly rather than duplicated. The two hero
+  customers keep their original hand-set numbers, since generating
+  bulk history for them risked overwriting Priya's specific jeans-return
+  anchor row that the demo script depends on.
+- **The 34%→10-15% story is simulated causally, not just labeled** —
+  `_generate_transactions_and_returns` walks each customer's orders in
+  chronological order and draws returns from `GUIDED_RETURN_RISK`
+  instead of `TARGET_RETURN_RATE` once a category has fit guidance *at
+  that point in time* (`fit_profile.created_at`, tracked per customer as
+  generation proceeds). See "Admin — business outcomes" below for what
+  this produces and the two dead-end query attempts it took to measure
+  it correctly.
+- **`tailor.py`'s return-risk baseline is now computed too** —
+  `_population_baseline_return_risk()` replaced the hardcoded
+  `BASELINE_RETURN_RISK = 0.34` constant with a live per-category query
+  (`returns / orders` for that category), falling back to the constant
+  only if the DB has no order history yet (e.g. before seeding). §09's
+  "34% baseline" stat stops being an asserted number and becomes
+  something the seeded data actually produces — verified against a
+  manual `SELECT COUNT(*)` for jeans specifically (11/28 = 0.3929,
+  matched exactly; this number shifts slightly whenever the generator
+  logic changes, since it's genuinely computed rather than fixed).
+
+## Category diversity in MUSE's results
+
+Expanding the catalogue surfaced a real ranking flaw that 16 SKUs never
+could: at 1,300+ SKUs, a query for Priya's "something for date night"
+returned dresses in all 20 of 20 slots — including under a jeans item
+that was *provably scoring higher* per-item (her fit history gives jeans
+a 12% return-risk vs. dresses' ~34%). The cause: `trending` is a flat 6%
+coin-flip per SKU, and dress simply has ~4x more SKUs than jeans in this
+catalogue (244 date-night candidates vs. 62), so it has more *absolute*
+trending items (21 vs. 3) — enough alone to fill the results regardless
+of any per-item score.
+
+Two things were tried and didn't work, kept here because the failures
+were instructive:
+1. **Rebalancing which nouns get tagged "date-night"** (e.g. adding
+   "Straight Jeans" alongside "Skinny Jeans") helped candidate-pool
+   composition but didn't fix the outcome — trending-count imbalance
+   scales with raw SKU count regardless of tag percentages.
+2. **A first version of the diversity cap** (`_apply_diversity_cap`)
+   still produced 100% dresses, because `_fallback_rank` and
+   `_rank_products` both independently truncated the ranked list to a
+   small pool *before* the cap ran — twice, in two different places —
+   leaving nothing but dresses for the cap to choose from. `_fallback_rank`
+   now returns every scored candidate, uncapped, and `_rank_products`
+   only applies its `response_bound` truncation when `gateway.call_model`
+   actually returned a live model's response (`live=True`) — the
+   fallback's JSON is valid too, so it silently took the same code path
+   as a live response and got re-truncated by it, which is the bug that
+   actually mattered.
+
+The fix that stuck: `_apply_diversity_cap(ranked_pool, top_n,
+max_per_category=2)` — greedily fills `top_n` from the *full* ranked
+pool while capping same-category picks, relaxing the cap only if too
+few categories exist to fill the quota otherwise. Verified: Priya's
+top 8 now reads dress, dress, **jeans (12% risk)**, accessories,
+accessories, top, top, shoes — capped at 2 per category, her fit-history
+item visibly surfaced, 0.025s and 9 audit_log rows (unchanged from
+before the fix, since this is all in-memory sorting on an
+already-fetched candidate list).
+
 ## TALLY — the loyalty agent
 
 `commit_subscription` calls `earn_points` right after the `transactional`
@@ -159,9 +239,57 @@ both from `GET /customers/{id}/loyalty` and the `points_earned` field
 
 ## The three additions from §03, as code (not just diagram)
 
-- **Evaluator-optimizer loop** — `muse.py`'s `_candidates()` calls `get_fit_profile` for every candidate's category before ranking. In the demo run, jeans score 12% return-risk for Priya (her seeded fit history) against a 34% baseline everywhere else, and the ranking reflects it.
+- **Evaluator-optimizer loop** — `muse.py`'s `_candidates()` calls `get_fit_profile` for every candidate's category before ranking. Priya's jeans score 12% return-risk (her seeded fit history) against a ~35-40% computed baseline for customers with none, and the ranking reflects it.
 - **Reflection / confidence check** — `orchestrator.classify_intent()` returns a confidence score alongside the intent; below `CONFIDENCE_THRESHOLD` (0.5), `handle_message()` returns a clarifying question instead of routing to a specialist.
 - **Human-in-the-loop** — `sentry.py` has no special escalation wire. It writes to `escalations` through the same tool path as any other agent; `concierge.py` reads `approved: False` back and reports `"status": "pending human review"` rather than treating it as a denial.
+
+## Product images
+
+`catalogue.image_url` is a dummy placeholder generated at seed time — a
+flat color per category via `placehold.co` (no key, no account), premium
+tier gets a small `•` marker in the label. Not real product photography;
+just enough for the discovery results to render as a retail-style grid
+(`st.columns` + `st.image` in `streamlit_app.py`) instead of a bulleted
+list. `_image_url(category, tier)` in `seed.py` is the one place this
+would change for a real DAM/CDN — nothing downstream (MUSE, the API, the
+UI) cares how the URL was produced, they just pass it through.
+
+## Admin — business outcomes (`GET /admin/outcomes`, 📊 Admin tab)
+
+`neutail/admin.py` computes the numbers §09 states as a target, from the
+same tables every agent already reads — no new agent, no tool contract,
+just read-only aggregate SQL. Three things worth knowing about what these
+numbers do and don't prove, found by actually computing them rather than
+asserting them:
+
+- **Return rate, guided vs. baseline** — went through two real fixes to
+  get here. First pass: naively splitting orders by "has a `fit_profile`
+  entry" measured the *opposite* of the intended story, since
+  `fit_profile` rows are generated *from* a customer's own too_small/
+  too_large return — counting that triggering return in the "guided"
+  bucket guarantees every guided customer >=1 return (58% vs. 17.6%).
+  Second pass, excluding the triggering return, still wasn't a real
+  measurement: `seed.py`'s generator applied a flat 34% return chance to
+  *every* order regardless of `fit_profile`, so no query over that data
+  could show a genuine effect — both rates landed near each other
+  (18.7% vs. 17.6%) no matter how the SQL was written, because the
+  underlying data never encoded guidance *preventing* a return.
+  Fixed properly now: `fit_profile.created_at` records when guidance was
+  established (schema.sql), `seed.py`'s generator walks each customer's
+  orders in chronological order and draws from `GUIDED_RETURN_RISK`
+  instead of the baseline rate once a category has guidance *at that
+  point in time*, and `admin.py`'s query compares each order's date
+  against `fit_profile.created_at` for a real before/after split instead
+  of a current-state snapshot. Result on the seeded population: baseline
+  **42.8%**, guided **8.2%** — a real, computed effect, not two similar
+  numbers dressed up as one.
+- **Search-to-purchase** is a proxy, not attributed conversion — share of
+  `(customer, category)` search/browse activity with >=1 order in that
+  category, because there's no impression-level link from a specific
+  MUSE recommendation to a specific later purchase in the schema.
+- **Upsell/loyalty numbers** (subscriptions committed, escalations by
+  status, points issued) are plain counts — no caveats, they're exactly
+  what they say.
 
 ## What's not built yet
 
@@ -170,3 +298,4 @@ both from `GET /customers/{id}/loyalty` and the `points_earned` field
 - Tier promotion from points — see the TALLY section above for why that's a deliberate gap, not an oversight.
 - GRADE and SCOUT — out of scope per §01, their signals are pre-seeded directly into `catalogue.trending` and `returns.reason_code`.
 - Intent classification is keyword-based, not a model call — deliberate, so routing doesn't pay reasoning-model latency and the confidence check stays legible; would be the first thing to swap for a real classifier past the demo stage.
+- `admin.py`'s "search-to-purchase" is still a proxy (see the Admin section) — there's no impression-level link from a specific MUSE recommendation to a specific later purchase in the schema, so it can only measure category-level search-then-buy, not true attribution.

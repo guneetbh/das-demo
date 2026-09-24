@@ -10,8 +10,28 @@ from neutail.db import get_connection
 
 AGENT_NAME = "tailor_agent"
 
-BASELINE_RETURN_RISK = 0.34
+# Used only if the DB has no order history yet (e.g. before the seed script
+# has run) — once seeded, _population_baseline_return_risk() replaces this
+# with a number actually computed from the returns/orders the seed
+# generator produced, instead of an asserted constant.
+_DEFAULT_BASELINE_RETURN_RISK = 0.34
 GUIDED_RETURN_RISK = 0.12
+
+
+def _population_baseline_return_risk(conn, category: str) -> float:
+    orders = conn.execute(
+        """SELECT COUNT(*) AS n FROM transactional
+           WHERE kind = 'order' AND sku IN (SELECT sku FROM catalogue WHERE category = ?)""",
+        (category,),
+    ).fetchone()["n"]
+    if orders == 0:
+        return _DEFAULT_BASELINE_RETURN_RISK
+    returns = conn.execute(
+        """SELECT COUNT(*) AS n FROM returns
+           WHERE sku IN (SELECT sku FROM catalogue WHERE category = ?)""",
+        (category,),
+    ).fetchone()["n"]
+    return round(returns / orders, 4)
 
 
 def _get_fit_profile(customer_id: str, category: str) -> dict:
@@ -23,11 +43,12 @@ def _get_fit_profile(customer_id: str, category: str) -> dict:
     ).fetchone()
 
     if profile is None:
+        baseline = _population_baseline_return_risk(conn, category)
         conn.close()
         return {
             "has_history": False,
             "guidance": "no fit history yet — using the standard size guide",
-            "return_risk": BASELINE_RETURN_RISK,
+            "return_risk": baseline,
         }
 
     returns = conn.execute(

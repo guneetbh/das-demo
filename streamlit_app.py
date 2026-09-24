@@ -38,7 +38,7 @@ def api_health():
         return None
 
 
-chat_tab, review_tab = st.tabs(["💬 Demo chat", "🛡️ Human review queue"])
+chat_tab, review_tab, admin_tab = st.tabs(["💬 Demo chat", "🛡️ Human review queue", "📊 Admin"])
 
 health = api_health()
 if health is None:
@@ -105,11 +105,13 @@ with chat_tab:
                     f"**segment:** `{result['segment']}` · confidence {result['confidence']:.0%} · "
                     f"live model: {result['used_live_model']}"
                 )
-                for r in result["results"]:
-                    st.markdown(
-                        f"- **{r['name']}** ({r['tier']}, ${r['price']:.2f}) — "
-                        f"return-risk {r['return_risk']:.0%} · _{r['reason']}_"
-                    )
+                cols = st.columns(min(len(result["results"]), 4) or 1)
+                for i, r in enumerate(result["results"]):
+                    with cols[i % len(cols)]:
+                        st.image(r.get("image_url"), use_container_width=True)
+                        st.markdown(f"**{r['name']}**")
+                        st.caption(f"{r['tier']} · ${r['price']:.2f} · risk {r['return_risk']:.0%}")
+                        st.caption(r["reason"])
                 reply = f"{len(result['results'])} picks for the {result['segment']} segment"
             elif result["type"] == "fit":
                 st.markdown(f"**{result['category']}** — {result['guidance']}")
@@ -179,3 +181,54 @@ with review_tab:
             if esc["status"] != "pending":
                 st.text(f"#{esc['escalation_id']} {esc['status']:<8} {esc['customer_id']} ${esc['amount']:.2f} "
                         f"by {esc['resolved_by']}")
+
+with admin_tab:
+    st.title("Business Outcomes")
+    st.caption("Computed from the seeded population (GET /admin/outcomes) — not asserted constants. §09")
+
+    if st.button("Refresh outcomes"):
+        st.rerun()
+
+    outcomes = api_get("/admin/outcomes")
+
+    pop = outcomes["population"]
+    st.subheader("Population")
+    cols = st.columns(6)
+    for col, (label, key) in zip(cols, [
+        ("Customers", "customers"), ("SKUs", "skus"), ("Orders", "orders"),
+        ("Returns", "returns"), ("Points issued", "points_issued"), ("Audit rows", "audit_log_rows"),
+    ]):
+        col.metric(label, f"{pop[key]:,}")
+
+    st.subheader("Return rate — guided vs. baseline")
+    rr = outcomes["return_rate"]
+    col_a, col_b = st.columns(2)
+    col_a.metric(
+        "Baseline (no fit guidance)",
+        f"{rr['baseline_return_rate']:.1%}" if rr["baseline_return_rate"] is not None else "n/a",
+        help=f"{rr['baseline_returns']} returns / {rr['baseline_orders']} orders",
+    )
+    col_b.metric(
+        "Guided (has fit_profile)",
+        f"{rr['guided_return_rate']:.1%}" if rr["guided_return_rate"] is not None else "n/a",
+        help=f"{rr['guided_returns']} returns / {rr['guided_orders']} orders",
+    )
+    st.caption(rr["note"])
+
+    st.subheader("Search-to-purchase (conversion proxy)")
+    stp = outcomes["search_to_purchase"]
+    st.metric(
+        "Categories searched that led to a purchase",
+        f"{stp['search_to_purchase_rate']:.1%}" if stp["search_to_purchase_rate"] is not None else "n/a",
+        help=f"{stp['converted_customer_categories']} / {stp['searched_customer_categories']} "
+             "(customer, category) pairs",
+    )
+    st.caption(stp["note"])
+
+    st.subheader("Upsell (UC4)")
+    up = outcomes["upsell"]
+    cols = st.columns(4)
+    cols[0].metric("Subscriptions committed", up["subscriptions_committed"])
+    cols[1].metric("Escalated to review", up["escalations_total"])
+    cols[2].metric("Approved", up["escalations_approved"])
+    cols[3].metric("Denied", up["escalations_denied"])

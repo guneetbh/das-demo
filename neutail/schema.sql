@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS catalogue (
     price           REAL NOT NULL,
     tier            TEXT NOT NULL CHECK (tier IN ('premium','private_label')),
     trending        INTEGER NOT NULL DEFAULT 0,      -- SCOUT's signal, pre-seeded per §01
-    occasion_tags   TEXT NOT NULL DEFAULT ''          -- comma-separated, e.g. "date-night,evening"
+    occasion_tags   TEXT NOT NULL DEFAULT '',         -- comma-separated, e.g. "date-night,evening"
+    image_url       TEXT NOT NULL DEFAULT ''          -- dummy placeholder, generated at seed time — no real product photography
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS fit_profile (
     category        TEXT NOT NULL,
     preferred_size  TEXT,
     runs            TEXT CHECK (runs IN ('small','true','large')),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),  -- when guidance was established — lets admin.py compare an order's date against this instead of a cross-sectional has/hasn't split
     PRIMARY KEY (customer_id, category)
 );
 
