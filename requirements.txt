@@ -12,3 +12,9 @@ anthropic>=0.40
 # memory should live there (with a TTL) instead of falling back to the
 # SQLite session_context table. `brew install redis && redis-server`.
 redis>=5.0
+
+# Optional — lets a .env file in the project root populate
+# ANTHROPIC_API_KEY / REDIS_URL automatically (neutail/__init__.py).
+# Without it, those still work as real environment variables; you'd
+# just need to `export` them yourself instead of using a .env file.
+python-dotenv>=1.0

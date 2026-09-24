@@ -29,23 +29,29 @@ def call_model(agent: str, tier: str, system: str, prompt: str, fallback: Callab
                 model=MODEL_POOL[tier],
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
+                max_tokens=4096,  # 1024 truncated MUSE's JSON mid-response at real candidate-list sizes
             )
             text = "".join(block.text for block in resp.content if block.type == "text")
             _log(agent, tier, live=True)
             return text, True
-        except Exception:
-            pass
+        except Exception as exc:
+            # Swallowing this was hiding real failures (rate limits, timeouts,
+            # truncation) behind an identical-looking fallback — logged now,
+            # not printed, so it shows up in the audit trail without risking
+            # the key itself ending up anywhere (SDK exceptions don't include
+            # it, but nothing here echoes request headers regardless).
+            _log(agent, tier, live=False, detail=f"live call failed: {type(exc).__name__}: {exc}")
+            return fallback(), False
 
-    _log(agent, tier, live=False)
+    _log(agent, tier, live=False, detail="no ANTHROPIC_API_KEY set")
     return fallback(), False
 
 
-def _log(agent: str, tier: str, live: bool) -> None:
+def _log(agent: str, tier: str, live: bool, detail: str | None = None) -> None:
     conn = get_connection()
     with conn:
         conn.execute(
             "INSERT INTO audit_log (caller, tool, allowed, detail) VALUES (?, ?, 1, ?)",
-            (agent, f"model_gateway:{tier}", f"live={live}"),
+            (agent, f"model_gateway:{tier}", detail or f"live={live}"),
         )
     conn.close()

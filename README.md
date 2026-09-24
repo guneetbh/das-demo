@@ -19,10 +19,12 @@ streamlit run streamlit_app.py                  # Streamlit Client, :8501 — ne
 ```
 
 Set `ANTHROPIC_API_KEY` to make MUSE and CONCIERGE call a live reasoning
-model instead of their deterministic fallbacks. Start a Redis server
-(`brew install redis && redis-server`) to move session memory off SQLite
-and onto Redis with a real TTL. Neither is required — everything falls
-back to plain `sqlite3` if it's not there.
+model instead of their deterministic fallbacks — a `.env` file in the
+project root works (`neutail/__init__.py` loads it via `python-dotenv`
+if installed), or export it directly. Start a Redis server (`brew
+install redis && redis-server`) to move session memory off SQLite and
+onto Redis with a real TTL. Neither is required — everything falls back
+to plain `sqlite3` if it's not there.
 
 ## What's here
 
@@ -34,7 +36,7 @@ back to plain `sqlite3` if it's not there.
 | `neutail/contracts.py` | Tool contract registry — name, allowed callers, handler |
 | `neutail/policy.py` | Policy engine — default-deny, caller must be on the tool's allow-list |
 | `neutail/runtime.py` | Agent Runtime — `invoke_tool()`, the one path every tool call takes; policy-checks and audit-logs every call |
-| `neutail/gateway.py` | Model Gateway — routes to a live Claude call when `ANTHROPIC_API_KEY` is set, else a deterministic fallback the caller supplies |
+| `neutail/gateway.py` | Model Gateway — routes to a live Claude call when `ANTHROPIC_API_KEY` is set, else a deterministic fallback the caller supplies; logs the real exception on a failed live call instead of swallowing it |
 | `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing, the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
@@ -49,7 +51,7 @@ back to plain `sqlite3` if it's not there.
 | `tailor.py` | `get_fit_profile` | Reads returns + fit history; return-risk baseline is computed per-category from seeded orders/returns, not a hardcoded constant; also the tool MUSE calls for the evaluator loop |
 | `care.py` | `resolve_contact` | Masks PII; flags upsell eligibility by loyalty tier |
 | `sentry.py` | `check_payment_policy` | Approves inside policy bounds, else writes a `pending` row to `escalations` |
-| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots |
+| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots; pre-filters to 60 candidates before ever building a live-model prompt |
 | `concierge.py` | `commit_subscription` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation |
 | `tally.py` | `get_loyalty_status`, `earn_points` | UC5, newly in scope. Points = amount × tier multiplier (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×); tier itself isn't recomputed from points (see below) |
 
@@ -213,6 +215,55 @@ accessories, top, top, shoes — capped at 2 per category, her fit-history
 item visibly surfaced, 0.025s and 9 audit_log rows (unchanged from
 before the fix, since this is all in-memory sorting on an
 already-fetched candidate list).
+
+## Getting the live model actually working
+
+Turning on `ANTHROPIC_API_KEY` for real surfaced four separate issues,
+none of them visible until someone actually flipped the switch:
+
+1. **`.env` files aren't read by anything.** `os.environ.get(...)`
+   only sees real environment variables — a `.env` file just sits there
+   unless something loads it. `neutail/__init__.py` now calls
+   `load_dotenv()` on import (guarded by `try/except ImportError` so the
+   package still works with zero dependencies if `python-dotenv` isn't
+   installed — this project has stayed standalone everywhere else, and
+   a hard-required import for an optional feature would have broken
+   that for anyone running the no-key fallback path).
+2. **The `anthropic` package itself was never installed** — only ever
+   in `requirements.txt` as an optional line, never actually `pip
+   install`ed in this session, since there was no key to test it with
+   until now. `gateway.py`'s `except Exception: pass` swallowed the
+   resulting `ModuleNotFoundError` identically to "no key set," so it
+   looked like a config problem rather than a missing package.
+3. **`max_tokens=1024` truncated MUSE's response mid-JSON** at real
+   candidate-list scale — a date-night query sends ~674 candidates,
+   and asking the model to rank them produced a response that hit
+   `stop_reason: max_tokens` before finishing, an unparseable JSON
+   fragment that silently fell back to the deterministic ranker.
+   Root cause was really the **171,000-character prompt** itself,
+   though — the actual fix is `_prefilter_for_prompt()`: candidates are
+   diversity-capped down to 60 (`PROMPT_CANDIDATE_LIMIT`, 12 per
+   category) before being sent to a live model at all, the same
+   `_apply_diversity_cap()` from above at a roomier threshold. `gateway.py`'s
+   `max_tokens` also went from 1024 to 4096 as a safety margin on top of that.
+4. **`used_live_model` reported whether the *gateway* reached the
+   model, not whether the *results* came from it.** When the model's
+   response failed to parse (any of the above, or a transient issue —
+   see below), `_rank_products` fell back to `_fallback_rank()` but kept
+   reporting whatever `live` the gateway returned, which could still be
+   `True` — a successful-but-unusable API call looked identical to a
+   real live ranking. Fixed by tracking `used_live_results` separately,
+   set only when the model's own output actually made it into `results`.
+
+With all four fixed, a live call takes roughly 15-20 seconds (Claude
+Opus reasoning over a 60-candidate prompt) and both `gateway.py`'s and
+`muse.py`'s exception handlers now log *what* failed to `audit_log`
+instead of silently swallowing it — worth checking there first if
+`used_live_model` ever comes back `False` unexpectedly again. One
+occurrence during testing turned out to be transient (succeeded
+identically on retry with no code change) — almost certainly rate
+limiting from the burst of calls made while chasing the other three
+issues, not a fifth bug.
 
 ## TALLY — the loyalty agent
 

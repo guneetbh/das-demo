@@ -23,6 +23,8 @@ from neutail.db import get_connection
 AGENT_NAME = "muse_agent"
 ENGAGEMENT_WINDOW_HOURS = 24  # "today", approximated as a rolling window rather than a calendar day
 MAX_PER_CATEGORY = 2  # diversity cap on final results — see _apply_diversity_cap
+PROMPT_CANDIDATE_LIMIT = 60  # cap on what gets sent to a live model — see _prefilter_for_prompt
+PROMPT_MAX_PER_CATEGORY = 12  # roomier than MAX_PER_CATEGORY; this is pre-filtering, not final selection
 
 SYSTEM_PROMPT = (
     "You are MUSE, a product-ranking agent for an apparel retailer. Given a customer "
@@ -179,6 +181,24 @@ def _apply_diversity_cap(ranked_pool: list[dict], top_n: int, max_per_category: 
     return selected
 
 
+def _prefilter_for_prompt(candidates: list[dict], segment: str, limit: int = PROMPT_CANDIDATE_LIMIT) -> list[dict]:
+    """Bounds what actually gets sent to a live model. Discovered via testing:
+    sending all 674 date-night candidates produced a 171K-character prompt,
+    the model's response hit max_tokens mid-JSON (stop_reason='max_tokens'),
+    and the truncated JSON failed to parse — silently falling back to the
+    deterministic ranker on every call, real key or not. Diversity-capped
+    at a much roomier threshold than the final result (12 vs. 2 per
+    category) so the model still has real choices, not just pre-decided
+    ones — it's a pre-filter, not a ranking.
+    """
+    if len(candidates) <= limit:
+        return candidates
+    scored = json.loads(_fallback_rank(candidates, segment))
+    by_sku = {c["sku"]: c for c in candidates}
+    pool = [by_sku[item["sku"]] for item in scored if item["sku"] in by_sku]
+    return _apply_diversity_cap(pool, top_n=limit, max_per_category=PROMPT_MAX_PER_CATEGORY)
+
+
 def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -> dict:
     candidates = _candidates(customer_id, query)
     by_sku = {c["sku"]: c for c in candidates}
@@ -186,14 +206,16 @@ def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -
     # prompt asks it to return — not what the fallback ranker considers, which
     # is always every candidate, so the diversity cap always has a full pool.
     response_bound = min(len(candidates), max(top_n * 4, 16))
+    prompt_candidates = _prefilter_for_prompt(candidates, segment)
 
-    prompt = json.dumps({"segment": segment, "query": query, "return_count": response_bound, "candidates": candidates})
+    prompt = json.dumps({"segment": segment, "query": query, "return_count": response_bound, "candidates": prompt_candidates})
     text, live = gateway.call_model(
         AGENT_NAME, "reasoning", SYSTEM_PROMPT, prompt,
         fallback=lambda: _fallback_rank(candidates, segment),
     )
 
     ranked_pool = []
+    used_live_results = False
     try:
         ranked = json.loads(text)
         if live:
@@ -212,13 +234,26 @@ def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -
             ranked_pool.append({**base, "reason": item.get("reason", "")})
         if not ranked_pool:
             raise ValueError("model returned no usable ranking")
-    except Exception:
+        used_live_results = live
+    except Exception as exc:
+        # `live` can be True here (the API call itself succeeded) even though
+        # this branch runs — e.g. a truncated or malformed response. Report
+        # used_live_model on whether the RESULTS came from the model, not on
+        # whether the gateway reached it; the two silently diverged before
+        # this fix, so a truncated-JSON failure looked identical to a real
+        # live ranking in the response. Logged, not swallowed — this branch
+        # firing with live=True means the model was reached but its response
+        # was unusable, worth knowing about even though the fallback keeps
+        # the demo working either way.
+        if live:
+            runtime.log_event(AGENT_NAME, "model_gateway:reasoning", allowed=True,
+                               detail=f"live response unusable, fell back: {type(exc).__name__}: {exc}")
         ranked = json.loads(_fallback_rank(candidates, segment))
         ranked_pool = [{**by_sku[item["sku"]], "reason": item["reason"]} for item in ranked if item["sku"] in by_sku]
 
     results = _apply_diversity_cap(ranked_pool, top_n)
     _log_search(customer_id, results)
-    return {"query": query, "segment": segment, "used_live_model": live, "results": results}
+    return {"query": query, "segment": segment, "used_live_model": used_live_results, "results": results}
 
 
 contracts.register(
