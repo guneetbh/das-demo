@@ -22,18 +22,16 @@ from neutail.db import get_connection
 AGENT_NAME = "concierge_agent"
 
 SYSTEM_PROMPT = (
-    "You are CONCIERGE, composing a one-paragraph styling-subscription upsell offer for "
-    "a retail customer. Be warm, specific to their segment, and mention the price. Reply "
-    "with ONLY the offer text, no preamble."
+    "You are CONCIERGE, writing a styling-subscription upsell offer for a retail customer. "
+    "ONE short sentence, at most 20 words. Warm, specific to their segment, no filler, no "
+    "preamble. Do not restate the price in the sentence — it's already shown separately in "
+    "the UI as its own element. Reply with ONLY that sentence."
 )
 
 
-def _fallback_offer(segment: str, amount: float, plan: str) -> str:
-    tone = "an exclusive, curated" if segment == "affluent" else "an easy, budget-friendly"
-    return (
-        f"Hi! Based on what you love, we'd like to offer you {tone} styling subscription "
-        f"({plan}) at ${amount:.2f}/mo — new picks delivered monthly, cancel anytime."
-    )
+def _fallback_offer(segment: str, plan: str) -> str:
+    tone = "exclusive, curated" if segment == "affluent" else "easy, budget-friendly"
+    return f"New picks delivered monthly ({plan}), {tone}, cancel anytime."
 
 
 def _commit_subscription(customer_id: str, amount: float, plan: str = "standard") -> dict:
@@ -49,8 +47,8 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
     segment = "affluent" if seg_row and seg_row["tier"] in ("Gold", "Platinum") else "value"
 
     offer_text, live = gateway.call_model(
-        AGENT_NAME, "reasoning", SYSTEM_PROMPT, f"segment={segment} amount={amount} plan={plan}",
-        fallback=lambda: _fallback_offer(segment, amount, plan),
+        AGENT_NAME, "reasoning", SYSTEM_PROMPT, f"segment={segment} plan={plan}",
+        fallback=lambda: _fallback_offer(segment, plan),
     )
 
     policy_result = runtime.invoke_tool(
@@ -61,6 +59,8 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
         return {
             "offered": True,
             "offer_text": offer_text,
+            "amount": amount,
+            "plan": plan,
             "used_live_model": live,
             "committed": False,
             "escalated": True,
@@ -83,6 +83,8 @@ def _commit_subscription(customer_id: str, amount: float, plan: str = "standard"
     return {
         "offered": True,
         "offer_text": offer_text,
+        "amount": amount,
+        "plan": plan,
         "used_live_model": live,
         "committed": True,
         "escalated": False,

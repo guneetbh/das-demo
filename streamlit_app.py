@@ -80,6 +80,30 @@ def risk_badge(return_risk: float) -> str:
     return f'<span class="ntail-badge ntail-badge-risk-{level}">Return risk {return_risk:.0%}</span>'
 
 
+def render_offer(offer: dict) -> None:
+    """Shared by both places a subscription offer shows (the product page's
+    'Talk to a stylist' button and a direct search for one) — price leads,
+    prominent and structured (offer['amount'], not parsed out of prose), the
+    model's one-sentence pitch follows as a caption instead of a full-width
+    paragraph. CONCIERGE's prompt deliberately doesn't tell the model the
+    price at all now, so there's no risk of the sentence and the badge
+    disagreeing with each other."""
+    if "error" in offer:
+        st.error(offer["detail"])
+        return
+    if not offer.get("upsell", True):
+        st.info("Not currently eligible for a styling subscription offer.")
+        return
+    price_line = f'<span class="ntail-price">${offer["amount"]:.2f}/mo</span> · {offer.get("plan", "standard")}'
+    if offer.get("escalated"):
+        st.warning(f"⏸️ Needs a quick review before it's confirmed — {offer['reason']}")
+        st.markdown(price_line, unsafe_allow_html=True)
+    else:
+        st.success(f"✅ Subscription confirmed — +{offer['points_earned']} pts")
+        st.markdown(price_line, unsafe_allow_html=True)
+    st.caption(offer["offer_text"])
+
+
 def open_product(sku: str) -> None:
     st.query_params["sku"] = sku
     st.rerun()
@@ -284,17 +308,7 @@ with shop_tab:
                     st.write(fit["guidance"])
 
             if st.session_state.stylist_offer:
-                offer = st.session_state.stylist_offer
-                if "error" in offer:
-                    st.error(offer["detail"])
-                elif not offer.get("upsell", True):
-                    st.info("Not currently eligible for a styling subscription offer.")
-                elif offer.get("escalated"):
-                    st.warning(f"⏸️ Needs a quick review before it's confirmed — {offer['reason']}")
-                    st.write(offer["offer_text"])
-                else:
-                    st.success(f"✅ Subscription confirmed — +{offer['points_earned']} pts")
-                    st.write(offer["offer_text"])
+                render_offer(st.session_state.stylist_offer)
 
     else:
         # ---------------------------------------------------------------- main / results view
@@ -342,14 +356,7 @@ with shop_tab:
             st.write(result["guidance"])
 
         elif result["type"] == "service":
-            if not result["upsell"]:
-                st.info("Not currently eligible for a styling subscription offer.")
-            elif result.get("escalated"):
-                st.warning(f"⏸️ Your offer needs a quick review before it's confirmed — {result['reason']}")
-                st.write(result["offer_text"])
-            else:
-                st.success(f"✅ Subscription confirmed — +{result['points_earned']} pts")
-                st.write(result["offer_text"])
+            render_offer(result)
 
         else:
             st.json(result)
