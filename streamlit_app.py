@@ -277,6 +277,8 @@ with shop_tab:
                 order = st.session_state.purchases[selected_sku]
                 if "error" in order:
                     st.error(order["detail"])
+                elif order.get("denied"):
+                    st.error(f"❌ Order was not approved — {order['reason']}")
                 elif order.get("escalated"):
                     st.warning(f"⏸️ Order needs a quick review before it ships — {order['reason']}")
                 else:
@@ -426,16 +428,30 @@ with review_tab:
                 # Persisted, not just st.success() right before st.rerun() --
                 # that pattern flashes and wipes itself before it's readable
                 # (same issue the Buy button had before it was fixed).
-                st.session_state.last_review_result = api_post(
+                out = api_post(
                     f"/escalations/{esc['escalation_id']}/resolve",
                     {"approve": True, "resolved_by": "streamlit_reviewer"},
                 )
+                st.session_state.last_review_result = out
+                # The product page's Buy-now card reads st.session_state.purchases,
+                # a snapshot cached at the moment of the original click -- it never
+                # re-checks the server, so without this the card is stuck showing
+                # "needs a quick review" forever even after this exact approval.
+                if esc.get("kind") == "order" and esc.get("sku") and "error" not in out:
+                    st.session_state.purchases[esc["sku"]] = {
+                        "order_id": out.get("order_id"),
+                        "points_earned": out.get("points_earned"),
+                        "points_balance": out.get("points_balance"),
+                    }
                 st.rerun()
             if col_deny.button("❌ Deny", key=f"deny-{esc['escalation_id']}"):
-                st.session_state.last_review_result = api_post(
+                out = api_post(
                     f"/escalations/{esc['escalation_id']}/resolve",
                     {"approve": False, "resolved_by": "streamlit_reviewer"},
                 )
+                st.session_state.last_review_result = out
+                if esc.get("kind") == "order" and esc.get("sku") and "error" not in out:
+                    st.session_state.purchases[esc["sku"]] = {"denied": True, "reason": esc.get("reason")}
                 st.rerun()
 
     with st.expander("Resolved history"):
