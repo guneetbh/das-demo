@@ -84,9 +84,53 @@ with chat_tab:
         col_points.metric("Points", f"{loyalty['points_balance']:,}")
         st.caption(f"{loyalty['multiplier']}× multiplier · ${loyalty['ytd_spend']:,.2f} YTD spend")
 
+    def render_assistant_result(result: dict) -> None:
+        """Shared by the live turn and history replay — previously only the
+        live turn got this rich rendering; history replay re-drew from a
+        short text summary stored alongside it, so images/metrics collapsed
+        to one line the moment a second message came in. Now the full
+        `result` dict is what's stored, and this is the only place that
+        turns it into UI, called either way."""
+        if "error" in result:
+            st.error(f"{result['error']}: {result['detail']}")
+        elif result["type"] == "clarify":
+            st.warning(result["message"] + f" (confidence {result['confidence']:.0%})")
+        elif result["type"] == "discovery":
+            st.markdown(
+                f"**segment:** `{result['segment']}` · confidence {result['confidence']:.0%} · "
+                f"live model: {result['used_live_model']}"
+            )
+            cols = st.columns(min(len(result["results"]), 4) or 1)
+            for i, r in enumerate(result["results"]):
+                with cols[i % len(cols)]:
+                    st.image(r.get("image_url"), use_container_width=True)
+                    st.markdown(f"**{r['name']}**")
+                    st.caption(f"{r['tier']} · ${r['price']:.2f} · risk {r['return_risk']:.0%}")
+                    st.caption(r["reason"])
+        elif result["type"] == "fit":
+            st.markdown(f"**{result['category']}** — {result['guidance']}")
+            st.caption(f"return-risk {result['return_risk']:.0%} · has_history={result['has_history']}")
+        elif result["type"] == "service":
+            if not result["upsell"]:
+                st.info("Not flagged as upsell-eligible for this customer.")
+            elif result.get("escalated"):
+                st.warning(f"⏸️ Escalated to Human Review — {result['reason']}")
+                st.markdown(result["offer_text"])
+            else:
+                st.success(
+                    f"✅ Subscription committed — order {result['order_id']} · "
+                    f"+{result['points_earned']} pts (balance {result['points_balance']:,})"
+                )
+                st.markdown(result["offer_text"])
+        else:
+            st.json(result)
+
     for role, content in st.session_state.get("messages", []):
         with st.chat_message(role):
-            st.markdown(content)
+            if role == "user":
+                st.markdown(content)
+            else:
+                render_assistant_result(content)
 
     prompt = st.chat_input("Try: \"show me something for date night\"")
     if prompt:
@@ -102,49 +146,9 @@ with chat_tab:
             })
 
         with st.chat_message("assistant"):
-            if "error" in result:
-                st.error(f"{result['error']}: {result['detail']}")
-                reply = f"⚠️ {result['detail']}"
-            elif result["type"] == "clarify":
-                st.warning(result["message"] + f" (confidence {result['confidence']:.0%})")
-                reply = result["message"]
-            elif result["type"] == "discovery":
-                st.markdown(
-                    f"**segment:** `{result['segment']}` · confidence {result['confidence']:.0%} · "
-                    f"live model: {result['used_live_model']}"
-                )
-                cols = st.columns(min(len(result["results"]), 4) or 1)
-                for i, r in enumerate(result["results"]):
-                    with cols[i % len(cols)]:
-                        st.image(r.get("image_url"), use_container_width=True)
-                        st.markdown(f"**{r['name']}**")
-                        st.caption(f"{r['tier']} · ${r['price']:.2f} · risk {r['return_risk']:.0%}")
-                        st.caption(r["reason"])
-                reply = f"{len(result['results'])} picks for the {result['segment']} segment"
-            elif result["type"] == "fit":
-                st.markdown(f"**{result['category']}** — {result['guidance']}")
-                st.caption(f"return-risk {result['return_risk']:.0%} · has_history={result['has_history']}")
-                reply = result["guidance"]
-            elif result["type"] == "service":
-                if not result["upsell"]:
-                    st.info("Not flagged as upsell-eligible for this customer.")
-                    reply = "Not upsell-eligible."
-                elif result.get("escalated"):
-                    st.warning(f"⏸️ Escalated to Human Review — {result['reason']}")
-                    st.markdown(result["offer_text"])
-                    reply = f"Escalated (id {result['escalation_id']}): {result['reason']}"
-                else:
-                    st.success(
-                        f"✅ Subscription committed — order {result['order_id']} · "
-                        f"+{result['points_earned']} pts (balance {result['points_balance']:,})"
-                    )
-                    st.markdown(result["offer_text"])
-                    reply = f"Committed: {result['order_id']} (+{result['points_earned']} pts)"
-            else:
-                st.json(result)
-                reply = str(result)
+            render_assistant_result(result)
 
-        st.session_state.messages.append(("assistant", reply))
+        st.session_state.messages.append(("assistant", result))
 
     with st.expander("Audit trail (last 10 calls)"):
         for row in api_get("/audit", limit=10)["entries"]:
