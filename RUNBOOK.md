@@ -202,6 +202,16 @@ a rejection, it's a pause.
 
 ### Bonus beats, if time allows
 
+- **Buy a product, watch points land** — open any product's detail
+  page and click **"🛒 Buy now."** For **Priya**, this commits
+  immediately (SENTRY's order threshold is $300, well above the
+  premium catalogue's ~$280 ceiling) — the sidebar's points balance
+  updates right there, no page navigation needed. For **Jordan**, the
+  *same* button on *any* product escalates instead, regardless of
+  price — she's a first-time payer (2 months' tenure), and that check
+  applies to purchases the same as subscriptions. Two customers, two
+  outcomes, same button — a clean way to show SENTRY's policy isn't
+  subscription-specific.
 - **Recent searches** — after a couple of searches, scroll to the
   bottom of the results page. A retail-site-style footer strip of past
   queries appears; clicking one re-runs it instantly. Session-scoped

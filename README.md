@@ -53,7 +53,7 @@ to plain `sqlite3` if it's not there.
 | `care.py` | `resolve_contact` | Masks PII; flags upsell eligibility by loyalty tier |
 | `sentry.py` | `check_payment_policy` | Approves inside policy bounds, else writes a `pending` row to `escalations` |
 | `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots; pre-filters to 60 candidates before ever building a live-model prompt |
-| `concierge.py` | `commit_subscription` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation |
+| `concierge.py` | `commit_subscription`, `commit_order` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation. `commit_order` is a plain product purchase — same policy/points chokepoints, no CARE step, its own SENTRY threshold (§04's Access & Policy table) since a one-time purchase isn't a recurring subscription |
 | `tally.py` | `get_loyalty_status`, `earn_points` | UC5, newly in scope. Points = amount × tier multiplier (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×); tier itself isn't recomputed from points (see below) |
 
 ## HTTP API (`neutail/api.py`)
@@ -354,10 +354,41 @@ building once there's a policy for *when* a tier change should take
 effect (immediately vs. next session vs. requiring the same confirmation
 SENTRY's threshold gets), not as a side effect of an unrelated feature.
 
-The UI surfaces this in the chat sidebar (tier + points, refreshed every
+The UI surfaces this in the sidebar (tier + points, refreshed every
 run) and in the commit confirmation itself (`+90 pts (balance 4,290)`),
 both from `GET /customers/{id}/loyalty` and the `points_earned` field
-`commit_subscription`/`resolve_escalation` now return.
+`commit_subscription`/`commit_order`/`resolve_escalation` all return.
+
+## Buying a product — closing a real gap, not just a UI addition
+
+There was no way to actually *buy* a product before — MUSE only ranks
+them; CONCIERGE only ever committed subscriptions. `commit_order`
+(`concierge.py`) is CONCIERGE's other half of what §04's data-ownership
+table already assigned it ("Transactional | Orders ... CONCIERGE"),
+newly wired up: looks up the SKU's price, runs the same `check_payment_policy`
+→ `earn_points` chokepoints as a subscription, no side door.
+
+One real design decision, not a default: SENTRY's $75 threshold was
+sized for subscriptions. Reusing it as-is for orders would send nearly
+every premium item ($140-280 in the seeded catalogue) to human review
+regardless of customer, which would make "buy something, watch points
+land" unreliable as a demo beat — a recurring $75/month commitment and
+a one-time purchase are genuinely different risk shapes anyway. Orders
+now get their own threshold (`AMOUNT_THRESHOLDS = {"subscription": 75,
+"order": 300}` in `sentry.py`), while the first-time-payer check stays
+shared — a brand-new customer should still get flagged buying anything,
+subscription or not. Verified both paths: Priya (18mo tenure) buying a
+$255 dress commits immediately (`+382 pts`, confirmed against the
+loyalty endpoint before and after); Jordan (2mo tenure) buying a $49
+dress escalates regardless of the modest amount, purely on
+first-time-payer — a natural, uncontrived way to hit both outcomes with
+the two existing hero customers.
+
+The Streamlit product detail page's **"🛒 Buy now"** button calls this
+directly, then `st.rerun()`s so the sidebar's loyalty panel — rendered
+earlier in the same script, so it wouldn't otherwise pick up the change
+until some *other* interaction triggered a rerun — reflects the new
+balance immediately rather than on the next unrelated click.
 
 ## The three additions from §03, as code (not just diagram)
 

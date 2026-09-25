@@ -115,6 +115,8 @@ if "fit_checks" not in st.session_state:
     st.session_state.fit_checks = {}
 if "stylist_offer" not in st.session_state:
     st.session_state.stylist_offer = None
+if "purchases" not in st.session_state:
+    st.session_state.purchases = {}
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
 
@@ -157,6 +159,7 @@ with shop_tab:
             st.session_state.last_result = None
             st.session_state.fit_checks = {}
             st.session_state.stylist_offer = None
+            st.session_state.purchases = {}
             st.query_params.clear()
 
         backend = health["session_backend"]
@@ -229,6 +232,32 @@ with shop_tab:
                 st.info(f"**Why we picked this for you:** {enrichment['reason']}")
 
             st.divider()
+
+            if selected_sku in st.session_state.purchases:
+                order = st.session_state.purchases[selected_sku]
+                if "error" in order:
+                    st.error(order["detail"])
+                elif order.get("escalated"):
+                    st.warning(f"⏸️ Order needs a quick review before it ships — {order['reason']}")
+                else:
+                    st.success(
+                        f"✅ Order placed — {order['order_id']} · "
+                        f"+{order['points_earned']} pts (balance {order['points_balance']:,})"
+                    )
+            elif st.button(f"🛒 Buy now — ${product['price']:.2f}", type="primary", use_container_width=True):
+                with st.spinner("Placing order..."):
+                    # commit_order (CONCIERGE) -> check_payment_policy (SENTRY) -> earn_points (TALLY),
+                    # the same chokepoints as every other money-moving action, not a side door.
+                    st.session_state.purchases[selected_sku] = api_post(
+                        "/tools/commit_order/invoke",
+                        {"caller": "concierge_agent", "args": {"customer_id": customer_id, "sku": selected_sku, "quantity": 1}},
+                    )
+                # Rerun so the sidebar's loyalty panel (rendered earlier in this same
+                # script) re-fetches and shows the new balance immediately — without
+                # this, the points update wouldn't be visible until some other
+                # interaction happened to trigger the next rerun.
+                st.rerun()
+
             col_fit, col_stylist = st.columns(2)
 
             if col_fit.button("📏 Check my fit", use_container_width=True):
