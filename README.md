@@ -38,7 +38,7 @@ to plain `sqlite3` if it's not there.
 | `neutail/runtime.py` | Agent Runtime — `invoke_tool()`, the one path every tool call takes; policy-checks and audit-logs every call |
 | `neutail/gateway.py` | Model Gateway — routes to a live Claude call when `ANTHROPIC_API_KEY` is set, else a deterministic fallback the caller supplies; logs the real exception on a failed live call instead of swallowing it |
 | `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
-| `neutail/orchestrator.py` | Lead Orchestrator — intent routing, the confidence-check self-loop, delegates memory reads/writes to `session_store` |
+| `neutail/orchestrator.py` | Lead Orchestrator — intent routing (live fast-tier call, keyword fallback), the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
 | `streamlit_app.py` | Streamlit Client (Fig. 04) — chat tab over `/chat`, review tab over `/escalations`, :8501 |
@@ -265,6 +265,45 @@ identically on retry with no code change) — almost certainly rate
 limiting from the burst of calls made while chasing the other three
 issues, not a fifth bug.
 
+## Live intent classification
+
+`orchestrator.classify_intent()` used to be pure keyword matching —
+deliberate originally, so routing never paid reasoning-model latency.
+That meant anything outside a short hardcoded phrase list (`"date
+night"`, `"show me"`, `"styling question"`, ...) scored confidence 0.2
+and hit the clarify path regardless of how clear the message actually
+was — e.g. "help me find an outfit for a candlelit dinner" never matched
+anything. Now it calls the fast tier (Haiku) first, with the original
+keyword matcher as its deterministic fallback — the same live/fallback
+shape as every other model call in this codebase, `gateway.call_model`
+under the hood.
+
+Two things this surfaced:
+
+- **Haiku wrapped its JSON in a markdown code fence** (` ```json\n{...}\n``` `)
+  on a real call, despite the system prompt saying "reply with ONLY
+  JSON" — `json.loads()` on the raw text failed, and (before the
+  `used_live_model` honesty fix above existed for this call site too)
+  would have silently fallen back while looking successful. Fixed with a
+  shared `gateway.extract_json()` that strips a wrapping fence before
+  parsing — applied here and, defensively, in `muse.py` too, since it's
+  the same underlying model-compliance risk on the same kind of prompt,
+  just not yet observed there.
+- **A well-calibrated live classifier breaks the old assumption that
+  "unknown" always means low confidence.** The keyword matcher's
+  "unknown" was a fixed 0.2 by construction; the model confidently
+  scores plain small talk like "hello" as `unknown` at ~0.95 — which is
+  *more* correct, but would have skipped the friendly clarify message
+  (confidence >= threshold) and fallen into the unhandled `"unknown"`
+  response type the UI just dumps as raw JSON. Fixed: `handle_message`
+  now clarifies whenever `intent == "unknown"`, independent of
+  confidence, not just when confidence is low.
+
+Every response from `handle_message` now carries `intent_live_model`
+alongside the existing `used_live_model` (MUSE/CONCIERGE's own flag,
+unchanged) — the two are independent: a `/chat` call can have live
+intent classification but a fallback ranking, or vice versa.
+
 ## TALLY — the loyalty agent
 
 `commit_subscription` calls `earn_points` right after the `transactional`
@@ -291,7 +330,7 @@ both from `GET /customers/{id}/loyalty` and the `points_earned` field
 ## The three additions from §03, as code (not just diagram)
 
 - **Evaluator-optimizer loop** — `muse.py`'s `_candidates()` calls `get_fit_profile` for every candidate's category before ranking. Priya's jeans score 12% return-risk (her seeded fit history) against a ~35-40% computed baseline for customers with none, and the ranking reflects it.
-- **Reflection / confidence check** — `orchestrator.classify_intent()` returns a confidence score alongside the intent; below `CONFIDENCE_THRESHOLD` (0.5), `handle_message()` returns a clarifying question instead of routing to a specialist.
+- **Reflection / confidence check** — `orchestrator.classify_intent()` (live fast-tier call, keyword matcher as fallback — see "Live intent classification" below) returns a confidence score alongside the intent; below `CONFIDENCE_THRESHOLD` (0.5), or whenever the intent itself is `"unknown"`, `handle_message()` returns a clarifying question instead of routing to a specialist.
 - **Human-in-the-loop** — `sentry.py` has no special escalation wire. It writes to `escalations` through the same tool path as any other agent; `concierge.py` reads `approved: False` back and reports `"status": "pending human review"` rather than treating it as a denial.
 
 ## Product images
@@ -348,5 +387,5 @@ asserting them:
 - The Streamlit UI hasn't been browser-tested (no browser tooling was available while building it) — it compiles clean and the server boots with no traceback, and every field it reads matches the API responses verified via curl, but a real click-through is still outstanding.
 - Tier promotion from points — see the TALLY section above for why that's a deliberate gap, not an oversight.
 - GRADE and SCOUT — out of scope per §01, their signals are pre-seeded directly into `catalogue.trending` and `returns.reason_code`.
-- Intent classification is keyword-based, not a model call — deliberate, so routing doesn't pay reasoning-model latency and the confidence check stays legible; would be the first thing to swap for a real classifier past the demo stage.
 - `admin.py`'s "search-to-purchase" is still a proxy (see the Admin section) — there's no impression-level link from a specific MUSE recommendation to a specific later purchase in the schema, so it can only measure category-level search-then-buy, not true attribution.
+- `run_demo.py` gets noticeably slower with a live key — every step now makes at least one fast-tier classification call plus, for discovery/service, a reasoning-tier one, so the full script can run past a couple of minutes instead of finishing instantly. Not a bug, just a real cost of moving off the deterministic fallback for the whole walkthrough rather than one call at a time.

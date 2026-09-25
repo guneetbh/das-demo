@@ -217,7 +217,7 @@ def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -
     ranked_pool = []
     used_live_results = False
     try:
-        ranked = json.loads(text)
+        ranked = json.loads(gateway.extract_json(text))
         if live:
             # response_bound is a defensive limit on an external model's output
             # only — the deterministic fallback already returns exactly the

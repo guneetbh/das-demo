@@ -7,6 +7,7 @@ a real key just makes MUSE/CONCIERGE's reasoning live instead of canned.
 """
 
 import os
+import re
 from typing import Callable
 
 from neutail.db import get_connection
@@ -15,6 +16,22 @@ MODEL_POOL = {
     "reasoning": "claude-opus-5",
     "fast": "claude-haiku-4-5-20251001",
 }
+
+_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```$", re.DOTALL)
+
+
+def extract_json(text: str) -> str:
+    """Strips a markdown code fence around a JSON payload, if present.
+    Every caller expecting JSON back from a live model should parse
+    through this rather than calling json.loads(text) directly — a
+    "reply with ONLY JSON" system prompt doesn't reliably stop a model
+    from wrapping its answer in ```json ... ``` anyway (confirmed: Haiku
+    did this on a real call classifying intent, even instructed not to).
+    A no-op on the deterministic fallback's own json.dumps() output,
+    which never has fences, so it's safe to apply unconditionally."""
+    stripped = text.strip()
+    match = _FENCE_RE.match(stripped)
+    return match.group(1).strip() if match else stripped
 
 
 def call_model(agent: str, tier: str, system: str, prompt: str, fallback: Callable[[], str]) -> tuple[str, bool]:
