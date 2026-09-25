@@ -47,12 +47,14 @@ streamlit run streamlit_app.py                # opens http://localhost:8501
 curl -s http://localhost:8000/health
 # {"status":"ok","session_backend":"redis"}  <- or "sqlite", either is fine
 ```
-Open http://localhost:8501 and confirm the Demo Chat tab loads with the
+Open http://localhost:8501 and confirm the **🛍️ Shop** tab loads —
+search bar at top, "Popular searches" suggestion chips below it, the
 Priya/Jordan selector and a loyalty panel in the sidebar.
 
 **5. Have a second window ready** on `http://localhost:8000/docs`
-(Swagger UI) — one step below needs it, since the chat UI alone can't
-trigger it (see step 5).
+(Swagger UI) — one step below needs it, since a $75+ offer (to trigger
+an escalation) isn't reachable from the storefront UI, which only ever
+requests the standard $60 offer (see step 5).
 
 ---
 
@@ -95,33 +97,37 @@ doc) if anyone asks "where's this documented."
 
 ### 1 — Intent routing & the confidence check *(reflection, §03)*
 
-In the chat tab (either customer), type something that's deliberately
-unclear:
+In the **🛍️ Shop** tab's search bar (either customer), type something
+that's deliberately unclear:
 > `hi`
 
-**Expect:** *"Could you say a bit more? I want to route this to the
-right specialist (best guess: unknown)."* — this is the self-check
-firing, not a bug: the Orchestrator won't commit to a specialist below
-a confidence threshold. (On fallback, "unknown" is always low
-confidence by construction; live, the model can be *highly* confident
-something's unclear — either way, `unknown` always clarifies.)
+**Expect:** a warning banner — *"Could you say a bit more? I want to
+route this to the right specialist (best guess: unknown)."* — this is
+the self-check firing, not a bug: the Orchestrator won't commit to a
+specialist below a confidence threshold. (On fallback, "unknown" is
+always low confidence by construction; live, the model can be *highly*
+confident something's unclear — either way, `unknown` always clarifies.)
 
-Then type a real request:
+Then search for real:
 > `show me something for date night`
 
-**Expect:** a clean discovery response, not a clarify — routing worked.
+**Expect:** a product results grid, not a clarify banner — routing
+worked. Point at the collapsed **"🔧 Behind the scenes"** expander below
+the grid — that's where the segment/confidence/live-model flags live now,
+deliberately out of the way of what a real storefront would show a
+customer.
 
 ### 2 — Profiling *(PERSONA, UC1)*
 
-Point at the response's segment line: `segment: affluent` for Priya,
+Open the "🔧 Behind the scenes" expander: `segment: affluent` for Priya,
 `segment: value` for Jordan — resolved live from CRM + loyalty tier,
 not stored or hand-typed. Switch customers in the sidebar and re-run
-the same query to show it side by side.
+the same search to show it side by side.
 
 ### 3 — Discovery *(MUSE, UC2 — evaluator loop + diversity cap)*
 
-Same query as above (`show me something for date night`) for **Priya**
-specifically. In the results, point out:
+Same search as above (`show me something for date night`) for **Priya**
+specifically. In the product grid, point out:
 - **Category variety** — no more than 2 items from any single category
   (the diversity cap — without it, at 1,300+ SKUs one category can
   swamp every slot on raw item count alone, a real bug found and fixed
@@ -139,15 +145,15 @@ specifically. In the results, point out:
 
 ### 4 — Fit & size guidance *(TAILOR, UC3)*
 
-**First, look at what step 3 actually returned** — the follow-up
-resolves to whichever *position* you reference, and MUSE doesn't
-guarantee jeans lands in Priya's top 4 (diversity cap + live-model
-judgment mean the mix varies; confirmed missing entirely in more than
-one validation run). Two ways to run this, in order of reliability:
+**First, look at what step 3's grid actually returned.** MUSE doesn't
+guarantee a jeans item lands in Priya's top 4 (diversity cap +
+live-model judgment mean the mix varies; confirmed missing entirely in
+more than one validation run). Two ways to show her guided-fit story, in
+order of reliability:
 
-**A — guaranteed, via the API** (use this if you need Priya's guided-fit
-story to land every time, e.g. presenting to an audience with no room
-for "let me try that again"):
+**A — guaranteed, via the API** (use this if you need it to land every
+time, e.g. presenting to an audience with no room for "let me try that
+again"):
 ```bash
 curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke \
   -H "Content-Type: application/json" \
@@ -155,38 +161,40 @@ curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke \
 ```
 **Expect:** `"has_history": true, "guidance": "size up from M — past returns show this category runs small", "return_risk": 0.12`. Bypasses MUSE's ranking entirely — same tool TAILOR always uses, just not gated on whether jeans happened to rank.
 
-**B — in the chat, if a jeans item did land in Priya's results** (check
-its position in step 3's output first, then reference it by that exact
-position — the resolver now understands `"second"`/`"third"`/`"fourth"`
-and higher, plus `"4th"`/`"#4"` forms, not just second/third):
-> `the fourth one, in my size` *(or whichever position it actually landed at)*
+**B — in the UI, if a jeans item did land in Priya's grid:** click into
+its **product detail page**, then click **"📏 Check my fit."** This calls
+TAILOR directly for that exact product's category — no ordinal reference
+("the second one") involved at all, since you're already looking at the
+specific product. That ambiguity only existed in the old chat-transcript
+UI; clicking a product sidesteps it entirely.
 
-Either way, then switch to **Jordan**, run the same discovery query,
-and ask any fit question — expect the **graceful no-history fallback**
+Either way, then switch to **Jordan**, open any product's detail page,
+and click "Check my fit" — expect the **graceful no-history fallback**
 ("no fit history yet — using the standard size guide") regardless of
-which item you reference, since she has no fit_profile row at all. Same
-code path as Priya's guided answer; the seeded data is the only
-difference.
+which product, since she has no fit_profile row at all. Same code path
+as Priya's guided answer; the seeded data is the only difference.
 
 ### 5 — Upsell, including human-in-the-loop *(CONCIERGE/CARE/SENTRY, UC4)*
 
-**In the chat**, as Priya:
-> `I have a styling question`
+Two equivalent ways to trigger this, as **Priya**: type `I have a
+styling question` into the search bar, or open any product's detail
+page and click **"💬 Talk to a stylist."** Both call the exact same
+service-intent flow.
 
 **Expect:** an offer, approved inside policy ($60, well under the
 $75/first-time-payer thresholds), a committed subscription, and points
 earned in the sidebar loyalty panel (`+90 pts` for Priya's Gold 1.5×
 multiplier).
 
-**The chat always uses a fixed $60 offer, so it can't trip an
-escalation on its own.** To show the human-in-the-loop path, switch to
-the Swagger UI (`localhost:8000/docs`) → `POST
-/tools/commit_subscription/invoke` → Try it out:
+**Neither UI path can request more than the standard $60 offer, so
+neither can trip an escalation on its own.** To show the
+human-in-the-loop path, switch to the Swagger UI (`localhost:8000/docs`)
+→ `POST /tools/commit_subscription/invoke` → Try it out:
 ```json
 {"caller": "lead_orchestrator", "args": {"customer_id": "CUST-PRIYA", "amount": 90.0, "plan": "premium"}}
 ```
 **Expect:** `"committed": false, "escalated": true` — SENTRY didn't deny
-it, it routed to a human. Go to the **Human Review Queue tab** in
+it, it routed to a human. Go to the **🛡️ Human Review** tab in
 Streamlit, find the pending row, and click **Approve** — the commit
 completes and points post *at that moment*, not when it was first
 requested. This is the point to make explicitly: the escalation isn't
@@ -194,11 +202,17 @@ a rejection, it's a pause.
 
 ### Bonus beats, if time allows
 
+- **Recent searches** — after a couple of searches, scroll to the
+  bottom of the results page. A retail-site-style footer strip of past
+  queries appears; clicking one re-runs it instantly. Session-scoped
+  (clears on "New session"), separate from the durable `behavioural`
+  history PERSONA/MUSE read — this is just a UI convenience, not part
+  of the personalization story.
 - **Cross-session memory** — click "New session" in the sidebar
   (simulates a return visit with no shared state) and re-run Priya's
-  discovery query. Segment and fit signal are already there —
-  recomputed live from durable tables, not carried over from the old
-  session, which is what makes it survive a Redis restart too.
+  search. Segment and fit signal are already there — recomputed live
+  from durable tables, not carried over from the old session, which is
+  what makes it survive a Redis restart too.
 - **TALLY / loyalty** — point at the sidebar panel before and after the
   step 5 commit; the balance moves by exactly `amount × tier
   multiplier`, visible in real time.
@@ -211,9 +225,11 @@ a rejection, it's a pause.
   data (no purchases yet correlate with searches until the demo itself
   generates some) — say that plainly rather than let a flat zero look
   like something's broken.
-- **The audit trail** — `GET /audit?limit=20` or the chat's own
-  expander. Every step above is a row here, policy-checked. This is
-  the answer to "how do we know this is actually enforcing anything" —
+- **The audit trail** — also in the **📊 Admin** tab now (moved off the
+  main shop view to keep the storefront looking like a storefront), or
+  `GET /audit?limit=20` directly. Every step above is a row here,
+  policy-checked. This is the answer to "how do we know this is
+  actually enforcing anything" —
   point at a `resolve_escalation` row right next to the `commit_subscription`
   it completed.
 
@@ -347,11 +363,12 @@ trails that look the same past row 1.
 
 | Symptom | Do this |
 |---|---|
-| Chat shows nothing after sending a message | Wait — a live call takes 15-40s and (as of the latest fix) shows a spinner. If it's been >60s, something's actually stuck; check the next row. |
-| `used_live_model` is `false` unexpectedly | Not a crash — the deterministic fallback kicked in. Keep going, the demo still works; check `GET /audit?limit=10` afterward for the real reason if you want to know why (rate limit, truncated response, etc. are all logged there now, not swallowed). |
+| Nothing happens after a search | Wait — a live call takes 15-40s and shows a spinner. If it's been >60s, something's actually stuck; check the next row. |
+| `used_live_model` is `false` unexpectedly | Not a crash — the deterministic fallback kicked in. Keep going, the demo still works; check the Admin tab's audit trail afterward for the real reason if you want to know why (rate limit, truncated response, etc. are all logged there now, not swallowed). |
 | "Can't reach the Agent Mesh Service" in Streamlit | `uvicorn` isn't running or died. `lsof -ti:8000 \| xargs kill; uvicorn neutail.api:app --port 8000 &` |
 | Streamlit tab is blank/stale | It auto-reloads on file changes but not on API restarts — hit browser refresh. |
-| Escalation queue empty when you expected a row | Check you actually called `commit_subscription` with `amount` over $75 — the chat's own $60 offer never trips it (see step 5). |
+| Clicking "View details" does nothing / product page shows an error | The SKU comes from the URL (`?sku=...`) — if you edited or pasted a URL by hand, check the SKU is spelled exactly right. From a normal click-through this shouldn't happen; if it does on a genuine click, that's worth reporting, not just working around. |
+| Escalation queue empty when you expected a row | Check you actually called `commit_subscription` with `amount` over $75 via the API — neither the search bar nor the "Talk to a stylist" button can request more than the standard $60 offer (see step 5). |
 | Redis badge shows "sqlite" | Fine — it's the documented fallback, not a failure. Skip the Redis-specific talking point or restart `redis-server` before `uvicorn`. |
 
 ---
