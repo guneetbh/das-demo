@@ -42,7 +42,7 @@ to plain `sqlite3` if it's not there.
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing (live fast-tier call, keyword fallback), the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
-| `streamlit_app.py` | Streamlit Client (Fig. 04) — chat tab over `/chat`, review tab over `/escalations`, :8501 |
+| `streamlit_app.py` | Streamlit Client (Fig. 04) — storefront (search bar + product grid + detail pages) over `/chat`, review tab over `/escalations`, admin tab over `/admin/outcomes`, :8501 |
 
 **Agents** — each ~40–100 lines, same shape: register a tool contract, implement it, expose `run()` that goes through the runtime.
 
@@ -136,6 +136,48 @@ right after, already shows jeans as `engaged: true` — because session A's
 visit was logged a moment earlier. PERSONA's `preference_tags` picks up
 the same rows for free, since it already read `behavioural` for exactly
 this purpose (§04) — MUSE was the one place a search wasn't durable yet.
+
+## Default recommendations fire the real pipeline, not a shortcut
+
+`streamlit_app.py`'s `load_recommended()` runs automatically the moment
+a shopper lands on a fresh session (and again on "New session") — the
+space that used to hold a large logo, or before that a "Popular
+searches" chip row, now shows a real "Recommended for you" product grid
+without the customer typing anything. It works by sending a synthetic
+prompt (`"recommend something for me today"`) through the exact same
+`/chat` → Orchestrator → PERSONA → MUSE → TAILOR path a typed search
+uses — not a mock, not a cached/canned list. One live call captured
+against a fresh session (`audit_log` rows 239-249, `log_id` ascending):
+
+```
+239 lead_orchestrator -> model_gateway:fast        (live intent classification)
+240 persona_agent     -> get_customer_segment       (local SQL)
+241-247 muse_agent     -> get_fit_profile ×7         (evaluator loop, one per candidate category)
+248 muse_agent         -> model_gateway:reasoning   (live MUSE ranking call)
+249 muse_agent         -> rank_products              (tool-contract wrapper, logs the full result)
+```
+
+Two things worth knowing, both confirmed rather than assumed:
+
+- **Nothing is exempt from governance.** All 11 rows land in
+  `audit_log` exactly like a typed search would — same
+  `runtime.invoke_tool` chokepoint, same `gateway.call_model`
+  live/fallback logging. If OpenRouter/Anthropic are unreachable, the
+  same deterministic fallback covers this call too, so the grid still
+  renders (non-personalized ranking) instead of failing.
+- **The cost tradeoff is real, not hypothetical.** This is 2 live model
+  API calls (fast-tier classify + reasoning-tier rank, ~15-25s wall
+  clock) fired automatically per fresh session, even for a visitor who
+  never searches — previously, a live call only happened on an
+  explicit search. Negligible at pilot scale (a couple of demo
+  shoppers); at real traffic volume it roughly doubles baseline
+  model-call volume per visitor. Worth a second look before this goes
+  past a pilot, not a problem for the demo as it stands.
+
+As a side effect, the auto-load also writes `last_results` /
+`segment` / `last_category_by_sku` to session memory exactly as a real
+search would (§07) — so "the second one, in my size" resolves correctly
+against the auto-loaded grid too, with no search required first.
 
 ## Seed data at build-requirement scale
 

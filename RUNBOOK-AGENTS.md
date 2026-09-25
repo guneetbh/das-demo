@@ -147,6 +147,38 @@ curl -s -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
 ```
 **Captured:** `used_live_model: true`, categories `[dress, dress, jacket, jacket]` — capped at 2 per category, confirmed no category exceeds the cap. Each item's `return_risk` came from a live `get_fit_profile` call per distinct category (6 such calls in the audit trail below for this one request, not 4 — one per candidate *category*, not per SKU).
 
+## 6b — The Streamlit storefront's default recommendations use this same path
+
+Since the last UI change, `streamlit_app.py` auto-loads a "Recommended
+for you" grid the moment a fresh session starts (`load_recommended()`),
+in the space that used to hold the logo. It's not a shortcut around the
+agent mesh — it sends a synthetic prompt through the identical `/chat`
+call used above, so it produces the identical call shape. Verified live
+against a brand-new session (`audit_log`, ascending `log_id`):
+
+```bash
+curl -s -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"session_id":"agentcall-verify","customer_id":"CUST-PRIYA","message":"recommend something for me today"}'
+curl -s "http://localhost:8000/audit?limit=11"
+```
+**Captured:**
+```
+239 lead_orchestrator -> model_gateway:fast        (live intent classification)
+240 persona_agent     -> get_customer_segment       (local SQL)
+241-247 muse_agent     -> get_fit_profile ×7         (evaluator loop, one call per candidate category)
+248 muse_agent         -> model_gateway:reasoning   (live MUSE ranking call)
+249 muse_agent         -> rank_products              (tool-contract wrapper, logs the full result)
+```
+`type: "discovery"`, `used_live_model: true`, `intent_live_model: true`
+— a real live-model round trip, same as any typed search, fired
+automatically once per fresh session (and again on "New session"). The
+tradeoff worth knowing: previously a live call only happened when a
+customer typed a search; this adds 2 live calls (~15-25s) per session
+start regardless of whether they ever search. Fine at pilot scale, worth
+revisiting before real traffic (see README's "Default recommendations
+fire the real pipeline" section for the fuller writeup). Same
+live/fallback safety net applies — no new failure mode introduced.
+
 ## 7 — CONCIERGE: `commit_order` and `commit_subscription`, plus TALLY
 
 ```bash
