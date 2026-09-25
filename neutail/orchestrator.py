@@ -28,15 +28,19 @@ _INTENT_KEYWORDS = {
 }
 
 CLASSIFY_SYSTEM_PROMPT = (
-    "You are an intent router for a retail customer chat. Classify the customer's message "
-    "into exactly one of: 'discovery' (wants product recommendations, e.g. \"show me something "
-    "for date night\", \"find me an outfit\"), 'fit' (asking about sizing or fit, e.g. \"does this "
-    "run small\", \"what size should I get\"), 'service' (wants to talk to a stylist or has a "
-    "styling question), or 'unknown' (greetings, small talk, or anything that isn't clearly one "
-    "of the above). Give a genuinely calibrated confidence — use below 0.5 whenever the message "
-    "is ambiguous or doesn't clearly fit one category, not only when it's plainly 'unknown'. "
-    "Reply with ONLY JSON: {\"intent\": \"discovery\"|\"fit\"|\"service\"|\"unknown\", "
-    "\"confidence\": <float 0-1>}."
+    "You are an intent router for a retail customer chat. The input is JSON: "
+    "{\"message\": str, \"has_recent_results\": bool}. has_recent_results is true when the "
+    "customer was already shown a list of products earlier this session — in that case, a short "
+    "follow-up like \"the second one, in my size\" or \"that one, bigger\" almost certainly means "
+    "'fit' (they're referencing an item from that list), not 'unknown', even though you can't see "
+    "the list itself. Classify message into exactly one of: 'discovery' (wants product "
+    "recommendations, e.g. \"show me something for date night\", \"find me an outfit\"), 'fit' "
+    "(asking about sizing or fit, including short follow-ups referencing a prior list per above), "
+    "'service' (wants to talk to a stylist or has a styling question), or 'unknown' (greetings, "
+    "small talk, or anything that isn't clearly one of the above). Give a genuinely calibrated "
+    "confidence — use below 0.5 whenever the message is ambiguous or doesn't clearly fit one "
+    "category, not only when it's plainly 'unknown'. Reply with ONLY JSON: "
+    "{\"intent\": \"discovery\"|\"fit\"|\"service\"|\"unknown\", \"confidence\": <float 0-1>}."
 )
 
 
@@ -55,10 +59,17 @@ def _keyword_fallback_json(message: str) -> str:
     return json.dumps({"intent": intent, "confidence": confidence})
 
 
-def classify_intent(message: str) -> tuple[str, float, bool]:
-    """Returns (intent, confidence, used_live_model)."""
+def classify_intent(message: str, has_recent_results: bool = False) -> tuple[str, float, bool]:
+    """Returns (intent, confidence, used_live_model). has_recent_results tells
+    the live classifier whether there's a discovery list in this session to
+    refer back to — without it, a short follow-up like "the second one, in
+    my size" reads as ambiguous 'unknown' in isolation (confirmed: scored
+    unknown/0.3 live, where the old keyword matcher's blunt "size" substring
+    match got it right by accident). The keyword fallback doesn't need this
+    signal — it already matches on "size" regardless of context."""
+    prompt = json.dumps({"message": message, "has_recent_results": has_recent_results})
     text, live = gateway.call_model(
-        "lead_orchestrator", "fast", CLASSIFY_SYSTEM_PROMPT, message,
+        "lead_orchestrator", "fast", CLASSIFY_SYSTEM_PROMPT, prompt,
         fallback=lambda: _keyword_fallback_json(message),
     )
     try:
@@ -87,7 +98,8 @@ def _resolve_ordinal_reference(message: str, session_id: str) -> tuple[str | Non
 
 
 def handle_message(session_id: str, customer_id: str, message: str) -> dict:
-    intent, confidence, intent_live_model = classify_intent(message)
+    has_recent_results = bool(session_store.load(session_id, "last_results"))
+    intent, confidence, intent_live_model = classify_intent(message, has_recent_results)
 
     # self-check: reflection (Fig. 01/02) — don't route blind below threshold.
     # "unknown" always clarifies regardless of confidence: unlike the old
