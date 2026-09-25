@@ -212,6 +212,15 @@ a rejection, it's a pause.
   applies to purchases the same as subscriptions. Two customers, two
   outcomes, same button — a clean way to show SENTRY's policy isn't
   subscription-specific.
+  Then close the loop on Jordan's: go to **🛡️ Human Review**, find the
+  row (it now shows the SKU alongside amount/reason for order-type
+  escalations, not just subscriptions), and **Approve** — a persisted
+  banner confirms the order and points, the same completion CONCIERGE
+  would have done directly if SENTRY hadn't paused it. This exact path
+  only fully works as of the latest fix — `resolve_escalation()` used
+  to only know how to complete a *subscription* escalation, so
+  approving an order-type one used to silently do nothing (status
+  flipped to "approved," no purchase, no points) until that gap closed.
 - **Recent searches** — after a couple of searches, scroll to the
   bottom of the results page. A retail-site-style footer strip of past
   queries appears; clicking one re-runs it instantly. Session-scoped

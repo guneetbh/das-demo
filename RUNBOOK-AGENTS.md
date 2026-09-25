@@ -1,11 +1,21 @@
 # Neu.Tail — Agents Implementation & Verification Runbook
 
-**Status: implemented and verified end to end**, as of commit `645c681`
+**Status: implemented and verified end to end**, as of commit `1d20b2b`
 on a freshly seeded database (`rm -f data/neutail.db && python3 -m
 neutail.seed`). Every result below was captured live through the
 running API in one pass while writing this document — not carried
 forward from earlier testing, not asserted. Reproduce any line of it
 with the `curl` command shown; nothing here needs the UI to verify.
+
+**One correction since the first version of this document** (commit
+`645c681`): the original CONCIERGE section verified `commit_order`
+only up through escalation *creation* — it never tested the full
+approve-and-complete loop. That gap in this document's own coverage is
+exactly how a real bug reached a user: `resolve_escalation()` only knew
+how to complete a `subscription` escalation, so approving an `order`
+one silently did nothing (status flipped to "approved," no purchase, no
+points). Fixed in `1d20b2b`; the CONCIERGE section below now includes
+the test that was missing.
 
 This is a different document from `RUNBOOK.md` (how to run a live
 five-functionality demo) and `README.md` (how the system works,
@@ -150,6 +160,17 @@ curl -s http://localhost:8000/customers/CUST-PRIYA/loyalty   # after
 **Captured after:** `points_balance: 4582` — matches exactly (`4200 + 255×1.5 = 4582`), confirmed against the loyalty endpoint independently of the order response, not just trusting the same call.
 
 `commit_subscription` (the "Talk to a stylist" path) verified separately: `committed: true, amount: 60.0, plan: "standard", offer_text` 18 words (tightened per the latest change — price is now its own field, never parsed out of prose).
+
+**The full escalation-to-completion loop** (the test that was missing before, per the correction at the top of this document):
+```bash
+curl -s -X POST http://localhost:8000/tools/commit_order/invoke -H "Content-Type: application/json" \
+  -d '{"caller":"concierge_agent","args":{"customer_id":"CUST-JORDAN","sku":"V-ATH-108","quantity":1}}'
+# -> escalated (first-time payer), escalation_id captured
+curl -s -X POST http://localhost:8000/escalations/<id>/resolve -H "Content-Type: application/json" \
+  -d '{"approve":true,"resolved_by":"streamlit_reviewer"}'
+curl -s http://localhost:8000/customers/CUST-JORDAN/loyalty   # confirm independently
+```
+**Captured:** escalation → `{"order_id":"ORD-CUST-JORDAN-33f7959290","points_earned":22,"points_balance":164}` on approval; loyalty endpoint independently confirms `points_balance: 164`. The `escalations` table now carries the `sku` (added in `1d20b2b`) so `resolve_escalation()` has something to complete the order with — that column didn't exist when the first version of this document was written.
 
 ---
 
