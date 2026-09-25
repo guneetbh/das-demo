@@ -139,17 +139,34 @@ specifically. In the results, point out:
 
 ### 4 — Fit & size guidance *(TAILOR, UC3)*
 
-Follow up in the **same session**, no context restated:
-> `the second one, in my size`
+**First, look at what step 3 actually returned** — the follow-up
+resolves to whichever *position* you reference, and MUSE doesn't
+guarantee jeans lands in Priya's top 4 (diversity cap + live-model
+judgment mean the mix varies; confirmed missing entirely in more than
+one validation run). Two ways to run this, in order of reliability:
 
-**Expect:** sizing guidance resolved from session memory (which item
-"the second one" means) plus TAILOR's fit call. For **Priya**, if a
-jeans item is in play: *"size up ... past returns show this category
-runs small."* Switch to **Jordan**, run the same discovery query, then
-ask a fit question — expect the **graceful no-history fallback**
-("no fit history yet — using the standard size guide") instead of an
-error. Both are the same code path; the only difference is the seeded
-data.
+**A — guaranteed, via the API** (use this if you need Priya's guided-fit
+story to land every time, e.g. presenting to an audience with no room
+for "let me try that again"):
+```bash
+curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"caller":"tailor_agent","args":{"customer_id":"CUST-PRIYA","category":"jeans"}}'
+```
+**Expect:** `"has_history": true, "guidance": "size up from M — past returns show this category runs small", "return_risk": 0.12`. Bypasses MUSE's ranking entirely — same tool TAILOR always uses, just not gated on whether jeans happened to rank.
+
+**B — in the chat, if a jeans item did land in Priya's results** (check
+its position in step 3's output first, then reference it by that exact
+position — the resolver now understands `"second"`/`"third"`/`"fourth"`
+and higher, plus `"4th"`/`"#4"` forms, not just second/third):
+> `the fourth one, in my size` *(or whichever position it actually landed at)*
+
+Either way, then switch to **Jordan**, run the same discovery query,
+and ask any fit question — expect the **graceful no-history fallback**
+("no fit history yet — using the standard size guide") regardless of
+which item you reference, since she has no fit_profile row at all. Same
+code path as Priya's guided answer; the seeded data is the only
+difference.
 
 ### 5 — Upsell, including human-in-the-loop *(CONCIERGE/CARE/SENTRY, UC4)*
 

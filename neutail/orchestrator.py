@@ -14,6 +14,7 @@ too: a successful-but-unparseable classification falls back honestly.
 """
 
 import json
+import re
 
 from neutail import gateway, session_store
 from neutail.agents import care, concierge, muse, persona, tailor
@@ -84,13 +85,38 @@ def classify_intent(message: str, has_recent_results: bool = False) -> tuple[str
         return intent, confidence, False
 
 
+_ORDINAL_WORDS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"]
+# Require an ordinal suffix or a # — a bare number would collide with "size 8"
+# in the exact same message ("the second one, in my size 8"), so this never
+# matches on size alone.
+_ORDINAL_SUFFIX_RE = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b")
+_ORDINAL_HASH_RE = re.compile(r"#(\d+)\b")
+
+
 def _resolve_ordinal_reference(message: str, session_id: str) -> tuple[str | None, str | None]:
+    """Only covered "second"/"third" before — silently wrong (defaulted to
+    the first item) for anything past that, including "the fourth one" even
+    though discovery shows exactly 4 results by default. Now covers ordinal
+    words up to eighth plus "4th"/"#4" forms, with headroom past today's
+    top_n=4 rather than a limit tied to it."""
     last_results = session_store.load(session_id, "last_results") or []
     if not last_results:
         return None, None
     q = message.lower()
-    idx = 1 if "second" in q else 2 if "third" in q else 0
-    if idx >= len(last_results):
+
+    idx = None
+    for i, word in enumerate(_ORDINAL_WORDS):
+        if word in q:
+            idx = i
+            break
+    if idx is None:
+        match = _ORDINAL_SUFFIX_RE.search(q) or _ORDINAL_HASH_RE.search(q)
+        if match:
+            idx = int(match.group(1)) - 1
+    if idx is None:
+        idx = 0  # no explicit reference — "the one we're already looking at"
+
+    if idx < 0 or idx >= len(last_results):
         idx = 0
     sku = last_results[idx]
     category_map = session_store.load(session_id, "last_category_by_sku") or {}
