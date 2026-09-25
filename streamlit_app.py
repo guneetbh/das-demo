@@ -376,7 +376,22 @@ with review_tab:
     st.title("Human Review Queue")
     st.caption("Resolves rows SENTRY wrote to `escalations` — approving completes the paused commit.")
 
+    if "last_review_result" not in st.session_state:
+        st.session_state.last_review_result = None
+
+    if st.session_state.last_review_result:
+        out = st.session_state.last_review_result
+        if out["status"] == "approved":
+            st.success(
+                f"✅ Approved — order {out.get('order_id')} · "
+                f"+{out.get('points_earned')} pts (balance {out.get('points_balance'):,})"
+                if out.get("points_earned") is not None else f"✅ Approved — order {out.get('order_id')}"
+            )
+        else:
+            st.info(f"❌ Denied — escalation #{out['escalation_id']} closed, nothing committed.")
+
     if st.button("Refresh", key="review-refresh"):
+        st.session_state.last_review_result = None
         st.rerun()
 
     pending = api_get("/escalations", status="pending")["escalations"]
@@ -386,23 +401,25 @@ with review_tab:
         with st.container(border=True):
             st.markdown(
                 f"**#{esc['escalation_id']}** · {esc['customer_id']} · {esc['kind']} · "
-                f"${esc['amount']:.2f} · _{esc['reason']}_"
+                f"${esc['amount']:.2f}" + (f" · `{esc['sku']}`" if esc.get("sku") else "") +
+                f" · _{esc['reason']}_"
             )
             st.caption(f"escalated at {esc['created_at']}")
             col_approve, col_deny = st.columns(2)
             if col_approve.button("✅ Approve", key=f"approve-{esc['escalation_id']}"):
-                out = api_post(f"/escalations/{esc['escalation_id']}/resolve", {
-                    "approve": True, "resolved_by": "streamlit_reviewer",
-                })
-                st.success(
-                    f"Approved — order {out.get('order_id')} · "
-                    f"+{out.get('points_earned')} pts (balance {out.get('points_balance')})"
+                # Persisted, not just st.success() right before st.rerun() --
+                # that pattern flashes and wipes itself before it's readable
+                # (same issue the Buy button had before it was fixed).
+                st.session_state.last_review_result = api_post(
+                    f"/escalations/{esc['escalation_id']}/resolve",
+                    {"approve": True, "resolved_by": "streamlit_reviewer"},
                 )
                 st.rerun()
             if col_deny.button("❌ Deny", key=f"deny-{esc['escalation_id']}"):
-                api_post(f"/escalations/{esc['escalation_id']}/resolve", {
-                    "approve": False, "resolved_by": "streamlit_reviewer",
-                })
+                st.session_state.last_review_result = api_post(
+                    f"/escalations/{esc['escalation_id']}/resolve",
+                    {"approve": False, "resolved_by": "streamlit_reviewer"},
+                )
                 st.rerun()
 
     with st.expander("Resolved history"):

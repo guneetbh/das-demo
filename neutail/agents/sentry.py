@@ -22,7 +22,7 @@ AMOUNT_THRESHOLDS = {"subscription": 75.0, "order": 300.0}
 DEFAULT_AMOUNT_THRESHOLD = 75.0
 
 
-def _check_payment_policy(customer_id: str, amount: float, kind: str = "subscription") -> dict:
+def _check_payment_policy(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
     conn = get_connection()
     customer = conn.execute(
         "SELECT tenure_months FROM customers WHERE customer_id = ?", (customer_id,)
@@ -45,11 +45,16 @@ def _check_payment_policy(customer_id: str, amount: float, kind: str = "subscrip
             (f"amount ${amount:.2f} over ${threshold:.2f} policy bound for {kind}", over_amount),
         ] if cond
     )
+    # sku is only meaningful for 'order' escalations (a subscription isn't
+    # tied to a product) — carried on the row so a human approving it later
+    # has something concrete to approve, and so the approval path can
+    # actually complete the purchase instead of just marking it "approved"
+    # with nothing to act on.
     with conn:
         cursor = conn.execute(
-            """INSERT INTO escalations (customer_id, kind, amount, reason, status)
-               VALUES (?, ?, ?, ?, 'pending')""",
-            (customer_id, kind, amount, reason),
+            """INSERT INTO escalations (customer_id, kind, amount, sku, reason, status)
+               VALUES (?, ?, ?, ?, ?, 'pending')""",
+            (customer_id, kind, amount, sku, reason),
         )
         escalation_id = cursor.lastrowid
     conn.close()
@@ -68,8 +73,8 @@ contracts.register(
 )
 
 
-def run(customer_id: str, amount: float, kind: str = "subscription") -> dict:
+def run(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
     """SENTRY's entry point — the Orchestrator/CONCIERGE calls this (Fig. 02, step 6)."""
     return runtime.invoke_tool(
-        AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind=kind
+        AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind=kind, sku=sku
     )

@@ -73,8 +73,9 @@ CREATE TABLE IF NOT EXISTS behavioural (
 CREATE TABLE IF NOT EXISTS escalations (
     escalation_id   INTEGER PRIMARY KEY AUTOINCREMENT,
     customer_id     TEXT NOT NULL REFERENCES customers(customer_id),
-    kind            TEXT NOT NULL,                     -- e.g. 'subscription_commit'
+    kind            TEXT NOT NULL,                     -- 'subscription' or 'order'
     amount          REAL NOT NULL,
+    sku             TEXT REFERENCES catalogue(sku),     -- set for 'order' escalations, NULL for 'subscription'
     reason          TEXT NOT NULL,                     -- why SENTRY escalated instead of approving
     status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),

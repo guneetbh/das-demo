@@ -1,7 +1,12 @@
 """Human Review Queue (§03/§04) — not a separate agent or service, per
 Fig. 03: it's the `escalations` table, and this is the resolve path a
 human reviewer (via the API) writes back through. Approving a pending
-subscription escalation completes the commit SENTRY paused.
+escalation completes the commit SENTRY paused — for either kind:
+'subscription' (no sku, per-customer) or 'order' (a specific product,
+found a real gap: this only ever handled 'subscription' until commit_order
+existed and this file was never updated for it — approving an order
+escalation silently did nothing but flip its status, no transactional
+row, no points, "nothing happened" from the reviewer's side).
 """
 
 import uuid
@@ -45,19 +50,20 @@ def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REV
                WHERE escalation_id = ?""",
             (new_status, resolved_by, escalation_id),
         )
-        if approve and row["kind"] == "subscription":
-            order_id = f"SUB-{row['customer_id']}-{uuid.uuid4().hex[:10]}"
+        if approve and row["kind"] in ("subscription", "order"):
+            prefix = "SUB" if row["kind"] == "subscription" else "ORD"
+            order_id = f"{prefix}-{row['customer_id']}-{uuid.uuid4().hex[:10]}"
             conn.execute(
                 """INSERT INTO transactional (order_id, customer_id, sku, kind, amount)
-                   VALUES (?, ?, NULL, 'subscription', ?)""",
-                (order_id, row["customer_id"], row["amount"]),
+                   VALUES (?, ?, ?, ?, ?)""",
+                (order_id, row["customer_id"], row["sku"], row["kind"], row["amount"]),
             )
     conn.close()
 
     points = None
     if order_id is not None:
         # the order landed, same as CONCIERGE's direct-approval path — TALLY earns points either way
-        points = tally.run(row["customer_id"], row["amount"], source="subscription")
+        points = tally.run(row["customer_id"], row["amount"], source=row["kind"])
 
     runtime.log_event(
         resolved_by, "resolve_escalation", allowed=True,

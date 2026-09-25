@@ -103,7 +103,7 @@ def _commit_order(customer_id: str, sku: str, quantity: int = 1) -> dict:
     amount = round(row["price"] * quantity, 2)
 
     policy_result = runtime.invoke_tool(
-        AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind="order"
+        AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind="order", sku=sku
     )
     if not policy_result["approved"]:
         return {
