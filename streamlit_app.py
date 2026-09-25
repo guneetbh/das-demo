@@ -159,6 +159,22 @@ def run_search(customer_id: str, query: str) -> None:
     st.session_state.recent_searches.insert(0, query)
     st.session_state.recent_searches = st.session_state.recent_searches[:MAX_RECENT_SEARCHES]
 
+    # A "fit" result answers a question about one resolved product ("the
+    # second one, in my size") — showing category-level text with no product
+    # in view left the customer guessing which item this was even about.
+    # Jump straight to that product's detail page instead, with the fit
+    # answer pre-loaded so it's there without a redundant extra click.
+    # (sku can be None — e.g. "how do jeans run?" with no product referenced
+    # — in which case there's nothing to open and the plain-text fallback
+    # further down still applies.)
+    if result.get("type") == "fit" and result.get("sku"):
+        st.session_state.fit_checks[result["category"]] = {
+            "has_history": result.get("has_history"),
+            "guidance": result.get("guidance"),
+            "return_risk": result.get("return_risk"),
+        }
+        st.query_params["sku"] = result["sku"]
+
 
 # --------------------------------------------------------------------------- boot
 health = api_health()
