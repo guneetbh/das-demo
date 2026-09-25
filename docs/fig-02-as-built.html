@@ -1,0 +1,282 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neu.Tail — Fig. 02, as designed vs. as built</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF0EA; --surface:#F8F9F4; --surface-2:#E6E9E0;
+    --text:#1A2420; --text-muted:#5B6660; --rule:#C9CFC3;
+    --accent-infra:#2F4FD1; --accent-infra-fill:#E3E7FB;
+    --accent-agent:#8C5A0F; --accent-agent-fill:#F3E7CF;
+    --accent-new:#B23A48; --accent-new-fill:#F7E3E1;
+    --font-display:'IBM Plex Sans Condensed','Arial Narrow',sans-serif;
+    --font-body:'IBM Plex Serif',Georgia,serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body); line-height:1.6;}
+  .sheet{max-width:1200px; margin:0 auto; padding:40px 24px 90px;}
+  .prose{max-width:74ch;}
+  .prose p{margin:0 0 14px;}
+  h1,h2{font-family:var(--font-display); font-weight:700; margin:0;}
+  .eyebrow{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-muted);}
+  .titleblock{background:var(--surface); border:1px solid var(--rule); padding:22px 26px; margin-bottom:30px;}
+  .titleblock h1{font-size:clamp(22px,3.4vw,30px); margin-top:6px;}
+  .titleblock .sub{font-family:var(--font-body); font-style:italic; color:var(--text-muted); margin-top:6px; font-size:14.5px;}
+  .diagram{background:var(--surface); border:1px solid var(--rule); padding:20px 22px 16px; margin:0 0 30px;}
+  .fig-label{font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; color:var(--text-muted); margin-bottom:10px;}
+  .diagram svg{width:100%; height:auto; display:block; color:var(--text);}
+  figcaption{font-size:13px; color:var(--text-muted); margin-top:12px; max-width:86ch;}
+  .legend{display:flex; gap:18px; margin-bottom:12px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:7px;}
+  .swatch{width:11px; height:11px; border-radius:2px; display:inline-block;}
+  .swatch.agent{background:var(--accent-agent);}
+  .swatch.infra{background:var(--accent-infra);}
+  .swatch.new{background:var(--accent-new);}
+  .lineswatch{width:18px; height:0; border-top:2px solid var(--text-muted); display:inline-block;}
+  .lineswatch.dash{border-top-style:dashed;}
+  .lineswatch.newdash{border-top-style:dashed; border-top-color:var(--accent-new);}
+  table.t{width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px;}
+  table.t th{font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); text-align:left; padding:8px 10px; border-bottom:1px solid var(--rule);}
+  table.t td{padding:9px 10px; border-bottom:1px solid var(--rule); vertical-align:top;}
+  table.t tr:last-child td{border-bottom:none;}
+  .tag{display:inline-block; font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:2px; white-space:nowrap;}
+  .tag.new{color:var(--accent-new); background:var(--accent-new-fill);}
+  footer{margin-top:40px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); border-top:1px solid var(--rule); padding-top:14px;}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="titleblock">
+    <span class="eyebrow">Neu.Tail — Sequence Diagram, As Designed vs. As Built</span>
+    <h1>Fig. 02 — redrawn against the real system</h1>
+    <div class="sub">Companion figure to RUNBOOK-sequence.md — the original blueprint's Fig. 02, reproduced unchanged, plus a second figure showing only what the actual build added or swapped.</div>
+  </div>
+
+  <div class="prose">
+    <p>The first diagram below is an exact reproduction of Fig. 02 from the Mission #3 blueprint artifact — nothing redrawn, nothing corrected. The second is new: it shows only the deltas found while building and demonstrating the system (full detail and evidence in <code>RUNBOOK-sequence.md</code>) — a real MUSE→TAILOR call where the blueprint drew a self-loop, TALLY wired into both commit paths, a second commit path (<code>commit_order</code>) that doesn't exist in the blueprint at all, the session-memory backend swap, and the deployment collapse. Anything in <span class="tag new">red</span> is a deviation from Fig. 02; nothing else changed.</p>
+  </div>
+
+  <!-- ============================================================ FIG. 02 — ORIGINAL, UNCHANGED ============================================================ -->
+  <div class="diagram">
+    <div class="fig-label">FIG. 02 — AS DESIGNED (Mission #3 blueprint, unchanged)</div>
+    <div class="legend">
+      <span><i class="lineswatch"></i>Agent / client hop</span>
+      <span><i class="lineswatch dash"></i>Response</span>
+      <span><i class="swatch infra"></i>Crosses Agent Runtime → Data Universe</span>
+      <span><i class="swatch agent"></i>Self-check — reflection / evaluator loop</span>
+    </div>
+    <svg viewBox="0 0 1090 888" role="img" aria-label="The original blueprint sequence diagram: Client, Orchestrator, PERSONA, MUSE, TAILOR, CONCIERGE and Data Universe lifelines, with the Orchestrator's confidence-check self-loop, MUSE's evaluator-loop self-loop, a session-memory note, TAILOR's fit guidance, CONCIERGE's subscription commit gated by a human-in-the-loop note, and closing cross-session-memory and audit-trail notes.">
+      <defs>
+        <marker id="seqArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+        <marker id="seqArrowInfra" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-infra)"/></marker>
+        <marker id="seqArrowAgent" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-agent)"/></marker>
+      </defs>
+      <g font-family="IBM Plex Sans Condensed">
+        <rect x="10" y="20" width="140" height="44" rx="2" fill="var(--surface)" stroke="var(--text-muted)"/>
+        <text x="80" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--text)">CLIENT</text>
+        <text x="80" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">customer message</text>
+        <rect x="165" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="235" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">ORCHESTRATOR</text>
+        <text x="235" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">routes · session mem</text>
+        <rect x="320" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="390" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">PERSONA</text>
+        <text x="390" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC1 · segment</text>
+        <rect x="475" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="545" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">MUSE</text>
+        <text x="545" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC2 · discovery</text>
+        <rect x="630" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="700" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">TAILOR</text>
+        <text x="700" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC3 · fit</text>
+        <rect x="785" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="855" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">CONCIERGE</text>
+        <text x="855" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC4 · +care +sentry</text>
+        <rect x="940" y="20" width="140" height="44" rx="2" fill="var(--accent-infra-fill)" stroke="var(--accent-infra)"/>
+        <text x="1010" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-infra)">DATA UNIVERSE</text>
+        <text x="1010" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">CRM·catalog·txn</text>
+      </g>
+      <g stroke="currentColor" stroke-opacity=".28" stroke-dasharray="2 4">
+        <line x1="80" y1="64" x2="80" y2="772"/><line x1="235" y1="64" x2="235" y2="772"/><line x1="390" y1="64" x2="390" y2="772"/>
+        <line x1="545" y1="64" x2="545" y2="772"/><line x1="700" y1="64" x2="700" y2="772"/><line x1="855" y1="64" x2="855" y2="772"/><line x1="1010" y1="64" x2="1010" y2="772"/>
+      </g>
+      <line x1="80" y1="92" x2="235" y2="92" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="157" y="85" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">① "something for date night"</text>
+      <path d="M235,108 L281,108 L281,130 L235,130" fill="none" stroke="var(--accent-agent)" stroke-width="1.6" marker-end="url(#seqArrowAgent)"/>
+      <text x="289" y="122" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">confidence check — low-confidence intent asks, doesn't route blind <tspan fill="var(--text-muted)">(reflection)</tspan></text>
+      <line x1="235" y1="156" x2="390" y2="156" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="312" y="149" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">route → PERSONA (intent: discovery)</text>
+      <line x1="390" y1="180" x2="1010" y2="180" stroke="var(--accent-infra)" marker-end="url(#seqArrowInfra)"/>
+      <text x="700" y="173" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">② get_customer_segment</text>
+      <line x1="1010" y1="204" x2="390" y2="204" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#seqArrowInfra)"/>
+      <text x="700" y="197" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">segment · tenure · tags</text>
+      <line x1="390" y1="228" x2="235" y2="228" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="312" y="221" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">affluent / value</text>
+      <line x1="235" y1="252" x2="545" y2="252" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="390" y="245" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">③ rank_products(segment)</text>
+      <line x1="545" y1="276" x2="1010" y2="276" stroke="var(--accent-infra)" marker-end="url(#seqArrowInfra)"/>
+      <text x="777" y="269" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">catalogue + inventory query</text>
+      <line x1="1010" y1="300" x2="545" y2="300" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#seqArrowInfra)"/>
+      <text x="777" y="293" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">SKUs · stock · price</text>
+      <path d="M545,316 L591,316 L591,338 L545,338" fill="none" stroke="var(--accent-agent)" stroke-width="1.6" marker-end="url(#seqArrowAgent)"/>
+      <text x="599" y="330" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">re-rank vs. TAILOR's cached return-risk before the feed ships <tspan fill="var(--text-muted)">(evaluator loop)</tspan></text>
+      <line x1="545" y1="368" x2="235" y2="368" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="390" y="361" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">ranked feed + reasoning trace</text>
+      <line x1="235" y1="392" x2="80" y2="392" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="157" y="385" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">results — side by side</text>
+      <rect x="10" y="408" width="320" height="40" rx="2" fill="var(--surface-2)" stroke="var(--accent-agent)" stroke-dasharray="4 3"/>
+      <text x="170" y="424" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-agent)">④ SESSION MEMORY</text>
+      <text x="170" y="438" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">"the second one, in my size" — no restate needed</text>
+      <line x1="235" y1="468" x2="700" y2="468" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="467" y="461" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">⑤ get_fit_profile</text>
+      <line x1="700" y1="492" x2="1010" y2="492" stroke="var(--accent-infra)" marker-end="url(#seqArrowInfra)"/>
+      <text x="855" y="485" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">returns + fit history</text>
+      <line x1="1010" y1="516" x2="700" y2="516" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#seqArrowInfra)"/>
+      <text x="855" y="509" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">size kept vs. returned</text>
+      <line x1="700" y1="540" x2="235" y2="540" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="467" y="533" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">size-up · return-risk ↓</text>
+      <line x1="235" y1="564" x2="80" y2="564" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="157" y="557" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">fit guidance shown</text>
+      <line x1="80" y1="596" x2="855" y2="596" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="467" y="589" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">⑥ styling question — service channel</text>
+      <rect x="320" y="612" width="700" height="28" rx="2" fill="var(--surface-2)" stroke="var(--accent-agent)" stroke-dasharray="4 3"/>
+      <text x="670" y="630" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--text-muted)">CARE resolves the contact · SENTRY checks the charge against policy (both gate CONCIERGE's calls)</text>
+      <rect x="320" y="648" width="700" height="36" rx="2" fill="var(--surface-2)" stroke="var(--accent-infra)" stroke-dasharray="4 3"/>
+      <text x="670" y="662" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-infra)">HUMAN-IN-THE-LOOP</text>
+      <text x="670" y="676" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">outside policy bounds → Human Review Queue, pending; SENTRY only auto-approves inside them</text>
+      <line x1="855" y1="706" x2="1010" y2="706" stroke="var(--accent-infra)" marker-end="url(#seqArrowInfra)"/>
+      <text x="932" y="699" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">commit_subscription</text>
+      <line x1="1010" y1="730" x2="855" y2="730" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#seqArrowInfra)"/>
+      <text x="932" y="723" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">write ok</text>
+      <line x1="855" y1="754" x2="80" y2="754" stroke="currentColor" stroke-opacity=".65" marker-end="url(#seqArrow)"/>
+      <text x="467" y="747" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">subscription confirmed</text>
+      <rect x="165" y="784" width="855" height="40" rx="2" fill="var(--surface-2)" stroke="var(--accent-infra)" stroke-dasharray="4 3"/>
+      <text x="592" y="800" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-infra)">⑦ CROSS-SESSION MEMORY</text>
+      <text x="592" y="814" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">next day, same customer — segment / fit / tier loaded from the store, not re-derived</text>
+      <rect x="10" y="832" width="1070" height="40" rx="2" fill="var(--surface-2)" stroke="var(--accent-agent)" stroke-dasharray="4 3"/>
+      <text x="545" y="848" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-agent)">⑧ AUDIT TRAIL</text>
+      <text x="545" y="862" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">every arrow (and self-check) above crossed the Gateway or the Agent Runtime, policy-checked — this trace is the log</text>
+    </svg>
+    <figcaption>Fig. 02 — reproduced exactly from the Mission #3 blueprint artifact (§06, "The Demo"). No corrections applied here; deltas are in the second figure below.</figcaption>
+  </div>
+
+  <!-- ============================================================ FIG. 02b — AS-BUILT DELTAS ============================================================ -->
+  <div class="diagram">
+    <div class="fig-label">FIG. 02b — AS BUILT: DELTAS ONLY</div>
+    <div class="legend">
+      <span><i class="lineswatch"></i>Agent hop (unchanged shape)</span>
+      <span><i class="lineswatch dash"></i>Response</span>
+      <span><i class="lineswatch newdash"></i>New / changed vs. Fig. 02</span>
+      <span><i class="swatch new"></i>Deviation — see RUNBOOK-sequence.md for evidence</span>
+    </div>
+    <svg viewBox="0 0 950 800" role="img" aria-label="A second sequence diagram showing only what changed relative to Fig. 02: a session-memory backend swap to Redis with SQLite fallback, a real MUSE-to-TAILOR call replacing the original's abstracted self-loop, a diversity cap self-loop on MUSE, TALLY wired into the commit path, a new commit_order buy-now path alongside commit_subscription, and a note on the policy engine and model gateway being embedded Python modules rather than separate OPA and LiteLLM containers.">
+      <defs>
+        <marker id="asBuiltArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
+        <marker id="asBuiltArrowInfra" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-infra)"/></marker>
+        <marker id="asBuiltArrowNew" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-new)"/></marker>
+      </defs>
+
+      <!-- lifeline headers: ORCHESTRATOR, MUSE, TAILOR, CONCIERGE, TALLY, DATA UNIVERSE -->
+      <g font-family="IBM Plex Sans Condensed">
+        <rect x="0" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="70" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">ORCHESTRATOR</text>
+        <text x="70" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">routes · session mem</text>
+        <rect x="160" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="230" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">MUSE</text>
+        <text x="230" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC2 · discovery</text>
+        <rect x="320" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="390" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">TAILOR</text>
+        <text x="390" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC3 · fit</text>
+        <rect x="480" y="20" width="140" height="44" rx="2" fill="var(--accent-agent-fill)" stroke="var(--accent-agent)"/>
+        <text x="550" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-agent)">CONCIERGE</text>
+        <text x="550" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">UC4 · +care +sentry</text>
+        <rect x="640" y="20" width="140" height="44" rx="2" fill="var(--accent-new-fill)" stroke="var(--accent-new)"/>
+        <text x="710" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-new)">TALLY</text>
+        <text x="710" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--accent-new)">UC5 · scoped OUT, built anyway</text>
+        <rect x="800" y="20" width="140" height="44" rx="2" fill="var(--accent-infra-fill)" stroke="var(--accent-infra)"/>
+        <text x="870" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-infra)">DATA UNIVERSE</text>
+        <text x="870" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">CRM·catalog·txn</text>
+      </g>
+      <g stroke="currentColor" stroke-opacity=".28" stroke-dasharray="2 4">
+        <line x1="70" y1="64" x2="70" y2="740"/><line x1="230" y1="64" x2="230" y2="740"/><line x1="390" y1="64" x2="390" y2="740"/>
+        <line x1="550" y1="64" x2="550" y2="740"/><line x1="710" y1="64" x2="710" y2="740"/><line x1="870" y1="64" x2="870" y2="740"/>
+      </g>
+
+      <!-- Delta 1: session store -->
+      <rect x="0" y="82" width="310" height="52" rx="2" fill="var(--accent-new-fill)" stroke="var(--accent-new)" stroke-dasharray="4 3"/>
+      <text x="10" y="99" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-new)">AS-BUILT — SESSION MEMORY (replaces ④)</text>
+      <text x="10" y="112" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text)">Redis (30-min TTL) → SQLite fallback</text>
+      <text x="10" y="124" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">§07 blueprint specifies SQLite (session_context) only</text>
+
+      <!-- Delta 2: real MUSE -> TAILOR loop -->
+      <text x="230" y="158" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent-new)">Fig. 02 draws this as a MUSE self-loop — built as a real cross-agent call:</text>
+      <line x1="230" y1="180" x2="390" y2="180" stroke="var(--accent-new)" stroke-dasharray="4 3" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="234" y="173" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">get_fit_profile × 7 — one call per candidate category, not per SKU</text>
+      <line x1="390" y1="204" x2="230" y2="204" stroke="var(--accent-new)" stroke-dasharray="2 2" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="234" y="197" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">return-risk per category</text>
+      <path d="M230,220 L276,220 L276,242 L230,242" fill="none" stroke="var(--accent-new)" stroke-width="1.6" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="284" y="234" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">diversity cap — max 2 items/category <tspan fill="var(--text-muted)">(not in blueprint)</tspan></text>
+
+      <!-- Delta 3: TALLY wiring (subscription path) -->
+      <text x="0" y="280" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent-new)">TALLY — explicitly scoped OUT by §01/§09; built anyway, wired into both commit paths below:</text>
+      <line x1="550" y1="302" x2="710" y2="302" stroke="var(--accent-new)" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="556" y="295" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">earn_points(amount, tier_multiplier)</text>
+      <line x1="710" y1="326" x2="870" y2="326" stroke="var(--accent-infra)" marker-end="url(#asBuiltArrowInfra)"/>
+      <text x="716" y="319" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-infra)">update loyalty ledger</text>
+      <line x1="870" y1="350" x2="710" y2="350" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#asBuiltArrowInfra)"/>
+      <text x="716" y="343" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-infra)">new balance</text>
+      <line x1="710" y1="374" x2="550" y2="374" stroke="var(--accent-new)" stroke-dasharray="4 3" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="556" y="367" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">points_earned · points_balance</text>
+
+      <!-- Delta 4: commit_order, the new path -->
+      <rect x="0" y="398" width="940" height="26" rx="2" fill="var(--accent-new-fill)" stroke="var(--accent-new)" stroke-dasharray="4 3"/>
+      <text x="470" y="415" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-new)">commit_order — "Buy now": Fig. 03 draws CONCIERGE providing only «commit_subscription»</text>
+
+      <line x1="460" y1="450" x2="550" y2="450" stroke="var(--accent-new)" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="466" y="443" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent-new)">buy now (from Client, off-lane)</text>
+
+      <rect x="320" y="466" width="460" height="28" rx="2" fill="var(--surface-2)" stroke="var(--accent-agent)" stroke-dasharray="4 3"/>
+      <text x="550" y="484" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">same CARE/SENTRY gate as commit_subscription — SENTRY's own order threshold (§04)</text>
+
+      <line x1="550" y1="518" x2="870" y2="518" stroke="var(--accent-new)" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="556" y="511" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">commit_order</text>
+      <line x1="870" y1="542" x2="550" y2="542" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#asBuiltArrowInfra)"/>
+      <text x="556" y="535" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-infra)">write ok</text>
+      <line x1="550" y1="566" x2="710" y2="566" stroke="var(--accent-new)" marker-end="url(#asBuiltArrowNew)"/>
+      <text x="556" y="559" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-new)">earn_points (same TALLY wiring as above)</text>
+
+      <rect x="220" y="588" width="660" height="26" rx="2" fill="var(--surface-2)" stroke="var(--accent-new)" stroke-dasharray="4 3"/>
+      <text x="550" y="605" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">same Human Review Queue as commit_subscription — required a new escalations.sku column, absent from the blueprint's table</text>
+
+      <!-- Delta 5: deployment / policy engine -->
+      <rect x="0" y="640" width="940" height="70" rx="2" fill="var(--accent-new-fill)" stroke="var(--accent-new)" stroke-dasharray="4 3"/>
+      <text x="12" y="658" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-new)">AS-BUILT — DEPLOYMENT</text>
+      <text x="12" y="674" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text)">Policy Engine &amp; Model Gateway are embedded Python modules (policy.py, gateway.py) inside ONE FastAPI process —</text>
+      <text x="12" y="688" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text)">not separate OPA (:8181) / LiteLLM (:8010) containers per Fig. 04.</text>
+      <text x="12" y="702" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">Pre-authorized by §08: "embedded YAML rule evaluator if time-boxed" — policy.py's own docstring says the same.</text>
+    </svg>
+    <figcaption>Fig. 02b — everything here is additive or swapped relative to Fig. 02; nothing shown above was removed from the original design. Full evidence for each item (audit-log traces, commit references, live-verified numbers) is in <code>RUNBOOK-sequence.md</code>.</figcaption>
+  </div>
+
+  <table class="t">
+    <tr><th>Delta</th><th>Fig. 02 said</th><th>Built</th><th>Why</th></tr>
+    <tr><td><span class="tag new">deviation</span></td><td>SQLite-only <code>session_context</code> (§07)</td><td>Redis, 30-min TTL, SQLite fallback</td><td>User asked whether Redis was in use; added mid-build</td></tr>
+    <tr><td><span class="tag new">deviation</span></td><td>MUSE↔TAILOR shown as a self-loop</td><td>Real per-category <code>get_fit_profile</code> calls (×7)</td><td>That's what the code actually does — a more literal diagram</td></tr>
+    <tr><td><span class="tag new">deviation</span></td><td><em>(not drawn)</em></td><td>Diversity cap, max 2 items/category</td><td>One category filled every slot at 1,300-SKU scale — invisible at demo scale</td></tr>
+    <tr><td><span class="tag new">deviation</span></td><td>TALLY explicitly out of scope (§01, §09)</td><td>Fully built, wired into both commit paths</td><td>User asked for visible points accrual</td></tr>
+    <tr><td><span class="tag new">deviation</span></td><td>CONCIERGE provides only «commit_subscription» (Fig. 03)</td><td>+<code>commit_order</code>, own SENTRY threshold</td><td>"Buy now" button, so points accrue on a purchase too</td></tr>
+    <tr><td><span class="tag new">deviation</span></td><td>4 containers incl. OPA (:8181), LiteLLM (:8010) (Fig. 04)</td><td>2 processes, policy/gateway as embedded Python modules</td><td>Pre-authorized by §08's own time-boxed fallback wording</td></tr>
+  </table>
+
+  <footer>
+    Source: Mission #3 blueprint artifact (Neu.Tail, §06 "The Demo"), read 2026-09-25. Companion doc: RUNBOOK-sequence.md. Saved to docs/fig-02-as-built.html — open directly in a browser to view.
+  </footer>
+
+</div>
+</body>
+</html>

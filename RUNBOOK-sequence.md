@@ -15,6 +15,12 @@ blueprint this one was cut down from. Those references are reproduced
 below as "Mission #3 ref" for completeness; they aren't independently
 checked here, since Mission #3's diagrams aren't part of this repo.
 
+**A redrawn Fig. 02 is in [`docs/fig-02-as-built.html`](docs/fig-02-as-built.html)** —
+open it in a browser: the original diagram reproduced unchanged, plus a
+second figure showing only the deltas (session store, real MUSE→TAILOR
+calls, TALLY, `commit_order`, the deployment collapse) in red against
+the same visual language as the blueprint.
+
 ---
 
 ## Quick-reference table
