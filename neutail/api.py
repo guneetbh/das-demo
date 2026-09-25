@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from neutail import admin, contracts, human_review, orchestrator, policy, runtime, session_store
 from neutail.agents import tally
+from neutail.db import get_connection
 
 app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0")
 
@@ -66,6 +67,21 @@ def chat(body: ChatRequest) -> dict:
 @app.get("/audit")
 def audit(limit: int = 20) -> dict:
     return {"entries": runtime.recent_audit_log(limit)}
+
+
+@app.get("/catalogue/{sku}")
+def catalogue_item(sku: str) -> dict:
+    """Public product master data — no agent, no tool contract, no policy
+    check. Exists so a product detail page has something to render on a
+    fresh load (bookmark, refresh, shared link), not just when reached by
+    clicking through a just-run search whose results are still in the
+    client's own session state."""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM catalogue WHERE sku = ?", (sku,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no such SKU: {sku}")
+    return dict(row)
 
 
 @app.get("/customers/{customer_id}/loyalty")
