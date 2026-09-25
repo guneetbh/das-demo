@@ -202,6 +202,130 @@ a rejection, it's a pause.
 
 ---
 
+## Architecture walkthrough — trace one request, and why it's built this way
+
+The five-functionality script above proves the demo *works*. This is
+for when the audience is technical and the question is "why is it built
+this way" — one concrete request, traced hop by hop through real code,
+with the actual `audit_log` rows as evidence, not a narrated diagram.
+
+**Run this, then pull the trail immediately after:**
+```bash
+curl -s -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"session_id":"arch-demo","customer_id":"CUST-PRIYA","message":"show me something for date night"}' > /dev/null
+curl -s "http://localhost:8000/audit?limit=10" | python3 -m json.tool
+```
+
+**What actually comes back** (captured live, on fallback mode — with a
+different candidate mix live, but the same shape):
+```
+1  lead_orchestrator -> model_gateway:fast        (allowed)
+2  persona_agent     -> get_customer_segment      (allowed)
+3  muse_agent        -> get_fit_profile           (allowed)
+4  muse_agent        -> get_fit_profile           (allowed)
+5  muse_agent        -> get_fit_profile           (allowed)
+6  muse_agent        -> get_fit_profile           (allowed)
+7  muse_agent        -> get_fit_profile           (allowed)
+8  muse_agent        -> get_fit_profile           (allowed)
+9  muse_agent        -> model_gateway:reasoning   (allowed)
+10 muse_agent        -> rank_products             (allowed)
+```
+
+Walk the audience through it in this order, pointing at each row:
+
+**1. Browser → Streamlit → `POST /chat` → FastAPI.** The UI never
+touches an agent module directly — it only knows one HTTP contract
+(`neutail/api.py`'s `/chat`). *Why:* the client is swappable — CLI,
+mobile app, a different UI entirely — with zero backend changes. This
+is Fig. 04's Streamlit-Client-to-Agent-Mesh-Service edge, not
+decoration.
+
+**2. FastAPI → `orchestrator.handle_message()`.** One function is the
+entry point for every customer message, regardless of what it turns
+out to be about. *Why:* keeps "what does this message mean" owned by
+the Orchestrator, not the transport layer — the Lead Orchestrator's
+job per the architecture doc is exactly "routes · decomposes ·
+arbitrates · holds context," nothing upstream of it should need to
+know what an intent even is.
+
+**3. Row 1 — `model_gateway:fast`.** Intent classification, live model
+first, keyword matcher as fallback. *Why it's a live call at all:* the
+old pure-keyword version only matched a handful of exact phrases;
+*why it still has a fallback:* routing is the one thing that must never
+go down just because a model API hiccups — confirmed necessary this
+build, when getting a *working* key took three separate real account
+issues to resolve.
+
+**4. The confidence check (no row — it's a branch, not a call).** Below
+threshold, or intent is `"unknown"`, the Orchestrator stops and asks
+rather than guessing. *Why:* this is the reflection pattern from the
+architecture doc's §03 made literal — most naive agent builds route
+blind on a bad classification; this one has an explicit, testable gate
+against it.
+
+**5. Row 2 — `persona_agent -> get_customer_segment`.** *Why
+`invoke_tool()` and not a plain function call:* every tool call —
+including PERSONA calling its own tool — crosses the same chokepoint,
+so the policy check and this audit row fire unconditionally. No agent
+can forget to log or skip a policy check, because there's no path that
+doesn't go through it. This is the literal Agent Runtime from Fig.
+01/03, not a diagram simplification.
+
+**6. Inside that call, before it's logged (not its own row —
+it's what makes row 2 possible):** `policy.check_tool_access()` —
+default-deny, checks `caller` against `get_customer_segment`'s
+`allowed_callers` list. *Why default-deny:* a newly added agent has
+zero access to anything until explicitly allow-listed, rather than
+being accidentally over-permissioned by default — try it live:
+`POST /tools/get_customer_segment/invoke` with `"caller":
+"concierge_agent"` comes back HTTP 403, not a silent no-op.
+
+**7. Rows 3-8 — six `get_fit_profile` calls, not one.** This is the
+evaluator loop (Fig. 03's dashed MUSE→TAILOR edge) actually happening:
+MUSE calls TAILOR's tool once per distinct category among the
+candidates, before ranking anything. *Why six and not ~500:* return-risk
+depends only on `(customer, category)`, never the SKU — deduped after
+load-testing at 1,300+ SKUs turned this into ~500 redundant calls per
+query; the fix is a plain dict cache keyed by category, not new
+infrastructure.
+
+**8. Row 9 — `model_gateway:reasoning`.** The actual ranking call:
+OpenRouter, then direct Anthropic, then the deterministic fallback, in
+that order, each attempt's real failure logged rather than swallowed.
+*Why three tiers:* a model call has more failure modes than almost
+anything else in this system (network, billing, rate limits, malformed
+JSON) — this build hit four distinct real ones getting a live key
+working. None of them became a demo-blocking incident, because the
+fallback was always there underneath.
+
+**9. Row 10 — `rank_products`.** This is `invoke_tool()`'s *own* log
+line for the outer call MUSE made — and it's last, not first, because
+`invoke_tool()` logs after `contract.handler()` returns. Everything the
+handler did internally (rows 3-9) necessarily logs before the call that
+contains them finishes. *Why point this out specifically:* it's the
+detail that proves the audit log isn't a curated summary — it's
+recording real call order, including the parts that are non-obvious
+until you've read the code.
+
+**10. Back in `handle_message` (no new rows):**
+`session_store.save()` writes `segment`/`last_results`/
+`last_category_by_sku` — Redis if reachable, SQLite otherwise — and
+`muse._log_search()` already wrote `behavioural` rows for what got
+shown. *Why two separate memory tiers, not one:* session state has a
+30-minute TTL by design and must never be where durable personalization
+lives, or a Redis restart would erase a customer's actual history, not
+just their current conversation. `preference_tags` (PERSONA) and
+`recently_engaged` (MUSE) both read the durable copy on the next call,
+regardless of what happens to this session.
+
+**Close the loop:** run the exact same request again in a **new**
+`session_id` (no shared state except SQLite) and show `intent_live_model`
+/ `used_live_model` / the resulting segment are identical — durable
+memory working, session memory irrelevant to it, proven by two audit
+trails that look the same past row 1.
+
+---
+
 ## If something breaks mid-demo
 
 | Symptom | Do this |
