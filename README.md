@@ -18,12 +18,13 @@ uvicorn neutail.api:app --reload --port 8000    # Agent Mesh Service, :8000
 streamlit run streamlit_app.py                  # Streamlit Client, :8501 — needs the API running first
 ```
 
-Set `ANTHROPIC_API_KEY` to make MUSE and CONCIERGE call a live reasoning
+Set `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` (OpenRouter is tried
+first if both are set) to make routing, MUSE and CONCIERGE call a live
 model instead of their deterministic fallbacks — a `.env` file in the
 project root works (`neutail/__init__.py` loads it via `python-dotenv`
 if installed), or export it directly. Start a Redis server (`brew
 install redis && redis-server`) to move session memory off SQLite and
-onto Redis with a real TTL. Neither is required — everything falls back
+onto Redis with a real TTL. None of this is required — everything falls back
 to plain `sqlite3` if it's not there.
 
 ## What's here
@@ -36,7 +37,7 @@ to plain `sqlite3` if it's not there.
 | `neutail/contracts.py` | Tool contract registry — name, allowed callers, handler |
 | `neutail/policy.py` | Policy engine — default-deny, caller must be on the tool's allow-list |
 | `neutail/runtime.py` | Agent Runtime — `invoke_tool()`, the one path every tool call takes; policy-checks and audit-logs every call |
-| `neutail/gateway.py` | Model Gateway — routes to a live Claude call when `ANTHROPIC_API_KEY` is set, else a deterministic fallback the caller supplies; logs the real exception on a failed live call instead of swallowing it |
+| `neutail/gateway.py` | Model Gateway — tries OpenRouter, then direct Anthropic, then the caller's deterministic fallback; logs the real exception on any failed live attempt instead of swallowing it |
 | `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing (live fast-tier call, keyword fallback), the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
@@ -264,6 +265,37 @@ occurrence during testing turned out to be transient (succeeded
 identically on retry with no code change) — almost certainly rate
 limiting from the burst of calls made while chasing the other three
 issues, not a fifth bug.
+
+## OpenRouter as an alternative provider
+
+`call_model()` tries three things in order: OpenRouter (if
+`OPENROUTER_API_KEY` is set), then a direct Anthropic call (if
+`ANTHROPIC_API_KEY` is set), then the caller's deterministic fallback.
+OpenRouter goes through plain `requests` against its OpenAI-compatible
+`chat/completions` endpoint — no new SDK, since `requests` was already a
+hard dependency for the Streamlit client. Model tiers map to
+provider-prefixed slugs in `OPENROUTER_MODEL_POOL`
+(`anthropic/claude-opus-4.1`, `anthropic/claude-haiku-4.5`), separate
+from `MODEL_POOL`'s direct-Anthropic model IDs, since the two catalogs
+don't share names.
+
+This path exists because a real key can fail for reasons that have
+nothing to do with the code — walked through three of them in sequence
+on one account, each logged with the real error rather than guessed at:
+an org-level key not scoped to a workspace (`invalid_request_error`,
+fixed with a workspace-scoped key), then insufficient credit balance on
+that workspace, then switching providers entirely once OpenRouter had
+its own funded key. None of the application code changed between the
+first and third attempts — `gateway.py`'s `except Exception` logging
+made each cause visible instead of all three looking identical.
+
+Tradeoff worth knowing: OpenRouter adds its own latency on top of the
+model call itself — a combined intent-classify + MUSE-rank round trip
+ran ~38s over OpenRouter versus ~15-20s for MUSE alone direct to
+Anthropic. Both `_log()` calls record which path actually served the
+request (`"live=True (openrouter)"` vs. `"live=True (anthropic
+direct)"`), visible in `/audit`, so it's never ambiguous which provider
+answered a given call.
 
 ## Live intent classification
 

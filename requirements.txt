@@ -3,9 +3,11 @@ uvicorn>=0.30
 streamlit>=1.64
 requests>=2.32
 
-# Optional — only needed if ANTHROPIC_API_KEY is set and MUSE/CONCIERGE
-# should call a live reasoning model instead of falling back to the
-# deterministic ranker/template.
+# Optional — OPENROUTER_API_KEY (via `requests`, already required above,
+# no extra package) is tried first; ANTHROPIC_API_KEY direct is the
+# second live path, needing this SDK. Either makes MUSE/CONCIERGE call a
+# live reasoning model instead of falling back to the deterministic
+# ranker/template; with neither set, everything runs on the fallback.
 anthropic>=0.40
 
 # Optional — only needed if a Redis server is reachable and session
@@ -14,7 +16,8 @@ anthropic>=0.40
 redis>=5.0
 
 # Optional — lets a .env file in the project root populate
-# ANTHROPIC_API_KEY / REDIS_URL automatically (neutail/__init__.py).
-# Without it, those still work as real environment variables; you'd
-# just need to `export` them yourself instead of using a .env file.
+# OPENROUTER_API_KEY / ANTHROPIC_API_KEY / REDIS_URL automatically
+# (neutail/__init__.py). Without it, those still work as real
+# environment variables; you'd just need to `export` them yourself
+# instead of using a .env file.
 python-dotenv>=1.0
