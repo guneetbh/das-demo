@@ -359,6 +359,73 @@ trails that look the same past row 1.
 
 ---
 
+## Testing and explaining return-risk
+
+Comes up naturally once someone notices several products in a grid show
+the same "Return risk 35%" badge and asks whether it's real or a
+placeholder. It's real — here's how to prove it live, and how to talk
+about it.
+
+**What it is, in one line:** TAILOR's estimate of how likely *this
+customer* is to return an item in *this category* — not per-product
+(there's no per-SKU return history to draw on), always per (customer,
+category), which is also why every item from the same category in a
+grid legitimately shows the identical number.
+
+**Two sources, and the test that tells them apart:**
+```bash
+# same category, two customers — one has fit history for it, one doesn't
+curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke -H "Content-Type: application/json" \
+  -d '{"caller":"tailor_agent","args":{"customer_id":"CUST-PRIYA","category":"jeans"}}'
+curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke -H "Content-Type: application/json" \
+  -d '{"caller":"tailor_agent","args":{"customer_id":"CUST-JORDAN","category":"jeans"}}'
+```
+**Expect:** Priya (has a seeded jeans return) → `"return_risk": 0.12` —
+TAILOR's fixed guided rate. Jordan (no history in that category) →
+`"return_risk": 0.3929` — the **population baseline** for jeans
+specifically, not a generic constant.
+
+**Prove the baseline isn't asserted — it's a live query.** Run the exact
+SQL TAILOR's `_population_baseline_return_risk()` runs, by hand, and
+show it matches the API's number to four decimal places:
+```bash
+sqlite3 data/neutail.db "
+SELECT
+  (SELECT COUNT(*) FROM returns WHERE sku IN (SELECT sku FROM catalogue WHERE category='jeans')) AS returns,
+  (SELECT COUNT(*) FROM transactional WHERE kind='order' AND sku IN (SELECT sku FROM catalogue WHERE category='jeans')) AS orders
+"
+```
+**Expect:** `11|28` — and `11/28 = 0.3929`, exactly Jordan's number above.
+No hidden fudge factor between the SQL and what the API returned.
+
+**Show it varies genuinely across categories**, not just jeans vs.
+jeans — different categories have different real return rates in the
+seeded population, which is why a shoes badge can look very different
+from a dress badge in the same grid:
+```bash
+for cat in dress jacket top shoes jeans; do
+  curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke -H "Content-Type: application/json" \
+    -d "{\"caller\":\"tailor_agent\",\"args\":{\"customer_id\":\"CUST-JORDAN\",\"category\":\"$cat\"}}" \
+    | python3 -c "import json,sys; print('$cat:', json.load(sys.stdin)['return_risk'])"
+done
+```
+**Expect** (numbers will drift slightly if reseeded, direction won't):
+dress ~35%, jacket ~35%, top ~37%, shoes noticeably higher (~48%), jeans
+~39% — several coincidentally round to the same displayed whole percent
+even though the underlying values differ; shoes makes the point
+unambiguous regardless.
+
+**The talking point that ties it together:** the gap between 12%
+(guided) and ~35-48% (baseline) *is* UC3's value proposition — TAILOR's
+whole job is moving a customer from the baseline number to the guided
+one by learning their fit pattern from a return. Zoom out to the same
+effect at population scale in the **Admin tab**: baseline **42.8%**,
+guided **8.2%**, computed from the same seeded data, not the same "34%
+→10-15%" figure asserted in the original architecture doc — this is
+that claim, actually measured.
+
+---
+
 ## If something breaks mid-demo
 
 | Symptom | Do this |
