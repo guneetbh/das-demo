@@ -19,8 +19,18 @@ API_BASE = "http://127.0.0.1:8000"
 DEMO_CUSTOMERS = {"Priya Nair (affluent, Gold, 18mo)": "CUST-PRIYA", "Jordan Lee (value, Bronze, 2mo)": "CUST-JORDAN"}
 SUGGESTED_SEARCHES = ["date night", "work outfit", "gym essentials", "everyday basics"]
 MAX_RECENT_SEARCHES = 8
+LOGO_HEADER = "assets/logo-header.png"  # mark + wordmark + tagline, cropped from the deck's own logo
+LOGO_MARK = "assets/logo-mark.png"      # square crop of just the "NT" mark, used as the favicon
 
-st.set_page_config(page_title="Neu.Tail", page_icon="🧵", layout="wide")
+# Brand palette, sampled from the pitch deck (T5S7M3-Service-blueprint-
+# commericial-model-v1.pptx) rather than invented: #E31837 is the deck's
+# own recurring accent (277 uses across 19 slides), #333333/#5F5E5A the
+# charcoal text/grey family, #F5F4F1/#E8E6DF the warm cream surfaces,
+# #FCEBEB the deck's own light-red tint paired with the accent for
+# highlight/warning pills. Widget colors (buttons, sliders, etc.) are set
+# once via .streamlit/config.toml; the CSS below only covers the custom
+# badge/price elements config.toml can't reach.
+st.set_page_config(page_title="Neu.Tail", page_icon=LOGO_MARK, layout="wide")
 
 st.markdown(
     """
@@ -28,12 +38,12 @@ st.markdown(
     div[data-testid="stForm"] input { border-radius: 999px !important; padding: 0.6em 1.2em !important; }
     .ntail-badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:0.75em;
                    font-weight:600; margin-right:6px; }
-    .ntail-badge-premium { background:#f4e4c1; color:#8a6516; }
-    .ntail-badge-private_label { background:#dbe9f5; color:#265a82; }
-    .ntail-badge-risk-low { background:#dcf3e4; color:#1e7a42; }
-    .ntail-badge-risk-mid { background:#fdf0d5; color:#96660e; }
-    .ntail-badge-risk-high { background:#fbe1e1; color:#a3312f; }
-    .ntail-price { font-size:1.15em; font-weight:700; }
+    .ntail-badge-premium { background:#F0E6C8; color:#8A6516; }
+    .ntail-badge-private_label { background:#ECECEA; color:#5F5E5A; }
+    .ntail-badge-risk-low { background:#E3F1E6; color:#2F7A45; }
+    .ntail-badge-risk-mid { background:#FBE9D2; color:#96660E; }
+    .ntail-badge-risk-high { background:#FCEBEB; color:#E31837; }
+    .ntail-price { font-size:1.15em; font-weight:700; color:#333333; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -189,6 +199,7 @@ shop_tab, review_tab, admin_tab = st.tabs(["🛍️ Shop", "🛡️ Human Review
 
 with shop_tab:
     with st.sidebar:
+        st.image(LOGO_MARK, width=56)
         st.subheader("Account")
         customer_label = st.selectbox("Shopping as", list(DEMO_CUSTOMERS))
         customer_id = DEMO_CUSTOMERS[customer_label]
@@ -219,7 +230,7 @@ with shop_tab:
         col_points.metric("Points", f"{loyalty['points_balance']:,}")
         st.caption(f"{loyalty['multiplier']}× multiplier · ${loyalty['ytd_spend']:,.2f} YTD spend")
 
-    st.title("🧵 Neu.Tail")
+    st.image(LOGO_HEADER, width=220)
 
     if st.session_state.pending_query:
         run_search(customer_id, st.session_state.pending_query)

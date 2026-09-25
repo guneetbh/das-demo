@@ -1,0 +1,9 @@
+# Neu.Tail brand theme — colors pulled from the pitch deck
+# (T5S7M3-Service-blueprint-commericial-model-v1.pptx: logo mark +
+# the deck's own recurring slide palette, not Streamlit's defaults).
+[theme]
+primaryColor = "#E31837"
+backgroundColor = "#FDFDFC"
+secondaryBackgroundColor = "#F5F4F1"
+textColor = "#333333"
+font = "sans serif"
