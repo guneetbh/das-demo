@@ -17,10 +17,10 @@ import streamlit as st
 
 API_BASE = "http://127.0.0.1:8000"
 DEMO_CUSTOMERS = {"Priya Nair (affluent, Gold, 18mo)": "CUST-PRIYA", "Jordan Lee (value, Bronze, 2mo)": "CUST-JORDAN"}
-SUGGESTED_SEARCHES = ["date night", "work outfit", "gym essentials", "everyday basics"]
 MAX_RECENT_SEARCHES = 8
-LOGO_HEADER = "assets/logo-header.png"  # mark + wordmark + tagline, cropped from the deck's own logo
-LOGO_MARK = "assets/logo-mark.png"      # square crop of just the "NT" mark, used as the favicon
+LOGO_MARK = "assets/logo-mark.png"       # square crop of just the "NT" mark, used as the favicon
+LOGO_COMPACT = "assets/logo-compact.png"  # mark + wordmark, no tagline — sits in the top-right header bar
+DEFAULT_RECS_QUERY = "Recommended for you"  # sentinel last_query value, never sent to recent_searches
 
 # Brand palette, sampled from the pitch deck (T5S7M3-Service-blueprint-
 # commericial-model-v1.pptx) rather than invented: #E31837 is the deck's
@@ -153,6 +153,26 @@ if "purchases" not in st.session_state:
     st.session_state.purchases = {}
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
+if "default_recs_loaded" not in st.session_state:
+    st.session_state.default_recs_loaded = False
+
+
+def _apply_fit_redirect(result: dict) -> None:
+    """A "fit" result answers a question about one resolved product ("the
+    second one, in my size") — showing category-level text with no product
+    in view left the customer guessing which item this was even about.
+    Jump straight to that product's detail page instead, with the fit
+    answer pre-loaded so it's there without a redundant extra click.
+    (sku can be None — e.g. "how do jeans run?" with no product referenced
+    — in which case there's nothing to open and the plain-text fallback
+    further down still applies.)"""
+    if result.get("type") == "fit" and result.get("sku"):
+        st.session_state.fit_checks[result["category"]] = {
+            "has_history": result.get("has_history"),
+            "guidance": result.get("guidance"),
+            "return_risk": result.get("return_risk"),
+        }
+        st.query_params["sku"] = result["sku"]
 
 
 def run_search(customer_id: str, query: str) -> None:
@@ -168,22 +188,24 @@ def run_search(customer_id: str, query: str) -> None:
         st.session_state.recent_searches.remove(query)
     st.session_state.recent_searches.insert(0, query)
     st.session_state.recent_searches = st.session_state.recent_searches[:MAX_RECENT_SEARCHES]
+    _apply_fit_redirect(result)
 
-    # A "fit" result answers a question about one resolved product ("the
-    # second one, in my size") — showing category-level text with no product
-    # in view left the customer guessing which item this was even about.
-    # Jump straight to that product's detail page instead, with the fit
-    # answer pre-loaded so it's there without a redundant extra click.
-    # (sku can be None — e.g. "how do jeans run?" with no product referenced
-    # — in which case there's nothing to open and the plain-text fallback
-    # further down still applies.)
-    if result.get("type") == "fit" and result.get("sku"):
-        st.session_state.fit_checks[result["category"]] = {
-            "has_history": result.get("has_history"),
-            "guidance": result.get("guidance"),
-            "return_risk": result.get("return_risk"),
-        }
-        st.query_params["sku"] = result["sku"]
+
+def load_recommended(customer_id: str) -> None:
+    """First thing a customer sees, in place of a bare logo -- a real,
+    personalized discovery result (same PERSONA segment + MUSE ranking path
+    as any typed search, just with a generic prompt standing in for a
+    query) instead of an empty page waiting for input."""
+    with st.spinner("Loading recommendations..."):
+        result = api_post("/chat", {
+            "session_id": st.session_state.session_id,
+            "customer_id": customer_id,
+            "message": "recommend something for me today",
+        })
+    st.session_state.last_result = result
+    st.session_state.last_query = DEFAULT_RECS_QUERY
+    st.session_state.default_recs_loaded = True
+    _apply_fit_redirect(result)
 
 
 # --------------------------------------------------------------------------- boot
@@ -211,6 +233,7 @@ with shop_tab:
             st.session_state.fit_checks = {}
             st.session_state.stylist_offer = None
             st.session_state.purchases = {}
+            st.session_state.default_recs_loaded = False
             st.query_params.clear()
 
         backend = health["session_backend"]
@@ -219,6 +242,7 @@ with shop_tab:
         if st.button("New session (simulate 'next day')"):
             st.session_state.session_id = f"ui-{customer_id}-{uuid.uuid4().hex[:8]}"
             st.session_state.last_result = None
+            st.session_state.default_recs_loaded = False
             st.query_params.clear()
             st.rerun()
 
@@ -230,11 +254,17 @@ with shop_tab:
         col_points.metric("Points", f"{loyalty['points_balance']:,}")
         st.caption(f"{loyalty['multiplier']}× multiplier · ${loyalty['ytd_spend']:,.2f} YTD spend")
 
-    st.image(LOGO_HEADER, width=220)
+    col_header_left, col_header_right = st.columns([5, 1])
+    with col_header_left:
+        st.caption("Smart retail. Real value.")
+    with col_header_right:
+        st.image(LOGO_COMPACT, use_container_width=True)
 
     if st.session_state.pending_query:
         run_search(customer_id, st.session_state.pending_query)
         st.session_state.pending_query = None
+    elif st.session_state.last_result is None and not st.session_state.default_recs_loaded:
+        load_recommended(customer_id)
 
     with st.form("search_form", clear_on_submit=False):
         col_input, col_button = st.columns([5, 1])
@@ -343,15 +373,7 @@ with shop_tab:
         # ---------------------------------------------------------------- main / results view
         result = st.session_state.last_result
 
-        if result is None:
-            st.subheader("Popular searches")
-            cols = st.columns(len(SUGGESTED_SEARCHES))
-            for col, suggestion in zip(cols, SUGGESTED_SEARCHES):
-                if col.button(suggestion, key=f"suggested-{suggestion}", use_container_width=True):
-                    st.session_state.pending_query = suggestion
-                    st.rerun()
-
-        elif "error" in result:
+        if "error" in result:
             st.error(f"{result['error']}: {result['detail']}")
 
         elif result["type"] == "clarify":
@@ -359,7 +381,10 @@ with shop_tab:
 
         elif result["type"] == "discovery":
             last_query = st.session_state.get("last_query", "")
-            st.subheader(f"Results for “{last_query}”" if last_query else "Results")
+            if last_query == DEFAULT_RECS_QUERY:
+                st.subheader(f"✨ {DEFAULT_RECS_QUERY}")
+            else:
+                st.subheader(f"Results for “{last_query}”" if last_query else "Results")
             cols = st.columns(min(len(result["results"]), 4) or 1)
             for i, r in enumerate(result["results"]):
                 with cols[i % len(cols)]:
