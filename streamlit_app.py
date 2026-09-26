@@ -20,7 +20,15 @@ DEMO_CUSTOMERS = {"Priya Nair (affluent, Gold, 18mo)": "CUST-PRIYA", "Jordan Lee
 MAX_RECENT_SEARCHES = 8
 LOGO_MARK = "assets/logo-mark.png"       # square crop of just the "NT" mark, used as the favicon
 LOGO_COMPACT = "assets/logo-compact.png"  # mark + wordmark, no tagline — sits in the top-right header bar
-DEFAULT_RECS_QUERY = "Recommended for you"  # sentinel last_query value, never sent to recent_searches
+SUGGESTED_SEARCHES = [
+    "show me something for date night",
+    "I have a styling question",
+    "jeans",
+    "shoes",
+    "new arrivals",
+    "something for the weekend",
+    "gift ideas",
+]
 
 # Brand palette, sampled from the pitch deck (T5S7M3-Service-blueprint-
 # commericial-model-v1.pptx) rather than invented: #E31837 is the deck's
@@ -153,8 +161,6 @@ if "purchases" not in st.session_state:
     st.session_state.purchases = {}
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
-if "default_recs_loaded" not in st.session_state:
-    st.session_state.default_recs_loaded = False
 
 
 def _apply_fit_redirect(result: dict) -> None:
@@ -191,23 +197,6 @@ def run_search(customer_id: str, query: str) -> None:
     _apply_fit_redirect(result)
 
 
-def load_recommended(customer_id: str) -> None:
-    """First thing a customer sees, in place of a bare logo -- a real,
-    personalized discovery result (same PERSONA segment + MUSE ranking path
-    as any typed search, just with a generic prompt standing in for a
-    query) instead of an empty page waiting for input."""
-    with st.spinner("Loading recommendations..."):
-        result = api_post("/chat", {
-            "session_id": st.session_state.session_id,
-            "customer_id": customer_id,
-            "message": "recommend something for me today",
-        })
-    st.session_state.last_result = result
-    st.session_state.last_query = DEFAULT_RECS_QUERY
-    st.session_state.default_recs_loaded = True
-    _apply_fit_redirect(result)
-
-
 # --------------------------------------------------------------------------- boot
 health = api_health()
 if health is None:
@@ -233,7 +222,6 @@ with shop_tab:
             st.session_state.fit_checks = {}
             st.session_state.stylist_offer = None
             st.session_state.purchases = {}
-            st.session_state.default_recs_loaded = False
             st.query_params.clear()
 
         backend = health["session_backend"]
@@ -242,7 +230,6 @@ with shop_tab:
         if st.button("New session (simulate 'next day')"):
             st.session_state.session_id = f"ui-{customer_id}-{uuid.uuid4().hex[:8]}"
             st.session_state.last_result = None
-            st.session_state.default_recs_loaded = False
             st.query_params.clear()
             st.rerun()
 
@@ -263,8 +250,6 @@ with shop_tab:
     if st.session_state.pending_query:
         run_search(customer_id, st.session_state.pending_query)
         st.session_state.pending_query = None
-    elif st.session_state.last_result is None and not st.session_state.default_recs_loaded:
-        load_recommended(customer_id)
 
     with st.form("search_form", clear_on_submit=False):
         col_input, col_button = st.columns([5, 1])
@@ -373,7 +358,17 @@ with shop_tab:
         # ---------------------------------------------------------------- main / results view
         result = st.session_state.last_result
 
-        if "error" in result:
+        if result is None:
+            st.subheader("Not sure where to start?")
+            st.caption("Try one of these searches:")
+            chip_cols = st.columns(min(len(SUGGESTED_SEARCHES), 4) or 1)
+            for i, suggestion in enumerate(SUGGESTED_SEARCHES):
+                with chip_cols[i % len(chip_cols)]:
+                    if st.button(suggestion, key=f"suggest-{i}", use_container_width=True):
+                        st.session_state.pending_query = suggestion
+                        st.rerun()
+
+        elif "error" in result:
             st.error(f"{result['error']}: {result['detail']}")
 
         elif result["type"] == "clarify":
@@ -381,10 +376,7 @@ with shop_tab:
 
         elif result["type"] == "discovery":
             last_query = st.session_state.get("last_query", "")
-            if last_query == DEFAULT_RECS_QUERY:
-                st.subheader(f"✨ {DEFAULT_RECS_QUERY}")
-            else:
-                st.subheader(f"Results for “{last_query}”" if last_query else "Results")
+            st.subheader(f"Results for “{last_query}”" if last_query else "Results")
             cols = st.columns(min(len(result["results"]), 4) or 1)
             for i, r in enumerate(result["results"]):
                 with cols[i % len(cols)]:
