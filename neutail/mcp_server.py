@@ -134,9 +134,15 @@ async def get_customer_segment(customer_id: str, caller: str = MCP_CALLER) -> Ca
 
 
 @mcp.tool()
-async def get_fit_profile(customer_id: str, category: str, caller: str = MCP_CALLER) -> CallToolResult:
-    """Get a customer's fit/return-risk guidance for a product category (e.g. 'jeans', 'dress')."""
-    return await asyncio.to_thread(_dispatch, caller, "get_fit_profile", customer_id=customer_id, category=category)
+async def get_fit_profile(
+    customer_id: str, category: str, customer_note: str | None = None, caller: str = MCP_CALLER
+) -> CallToolResult:
+    """Get a customer's fit/return-risk guidance for a product category (e.g. 'jeans', 'dress').
+    Optional customer_note (free text about body/fit preferences) triggers one live fast-tier
+    model call blending it with the deterministic guidance — omit it for the fast, no-model path."""
+    return await asyncio.to_thread(
+        _dispatch, caller, "get_fit_profile", customer_id=customer_id, category=category, customer_note=customer_note
+    )
 
 
 @mcp.tool()

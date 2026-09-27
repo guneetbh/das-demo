@@ -29,6 +29,12 @@ SUGGESTED_SEARCHES = [
     "something for the weekend",
     "gift ideas",
 ]
+FIT_NOTE_SUGGESTIONS = [
+    "I have wide calves",
+    "I'm usually between two sizes",
+    "I prefer a relaxed fit",
+    "This brand usually runs small on me",
+]
 
 # Brand palette, sampled from the pitch deck (T5S7M3-Service-blueprint-
 # commericial-model-v1.pptx) rather than invented: #E31837 is the deck's
@@ -149,6 +155,9 @@ def _render_fit(result: dict) -> None:
     st.markdown(f"### {result['category'].title()} fit guidance")
     st.markdown(risk_badge(result["return_risk"]), unsafe_allow_html=True)
     st.write(result["guidance"])
+    if result.get("live_guidance"):
+        tag = "🔴 live" if result.get("used_live_model") else "⚪ fallback"
+        st.info(f"**{tag}**, on your note — {result['live_guidance']}")
 
 
 def _render_service(result: dict) -> None:
@@ -204,6 +213,8 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None
 if "fit_checks" not in st.session_state:
     st.session_state.fit_checks = {}
+if "fit_note" not in st.session_state:
+    st.session_state.fit_note = ""
 if "stylist_offer" not in st.session_state:
     st.session_state.stylist_offer = None
 if "purchases" not in st.session_state:
@@ -375,13 +386,30 @@ with shop_tab:
                 # interaction happened to trigger the next rerun.
                 st.rerun()
 
+            with st.expander("📏 Anything about your body or fit preference? (optional)"):
+                st.caption("Adds one live model call blending your note with the fit history below — leave it blank to skip that and stay instant.")
+                chip_cols = st.columns(len(FIT_NOTE_SUGGESTIONS))
+                for i, suggestion in enumerate(FIT_NOTE_SUGGESTIONS):
+                    if chip_cols[i].button(suggestion, key=f"fitnote-{i}", use_container_width=True):
+                        st.session_state.fit_note = suggestion
+                        st.rerun()
+                st.text_input(
+                    "Or type your own",
+                    key="fit_note",
+                    placeholder="e.g. I have wide calves and prefer a relaxed fit",
+                    label_visibility="collapsed",
+                )
+
             col_fit, col_stylist = st.columns(2)
 
             if col_fit.button("📏 Check my fit", use_container_width=True):
-                with st.spinner("Checking..."):
+                with st.spinner("Checking..." if not st.session_state.fit_note else "Checking — factoring in your note, one live call (a few seconds)..."):
+                    args = {"customer_id": customer_id, "category": category}
+                    if st.session_state.fit_note:
+                        args["customer_note"] = st.session_state.fit_note
                     st.session_state.fit_checks[category] = api_post(
                         "/tools/get_fit_profile/invoke",
-                        {"caller": "tailor_agent", "args": {"customer_id": customer_id, "category": category}},
+                        {"caller": "tailor_agent", "args": args},
                     )
 
             if col_stylist.button("💬 Talk to a stylist", use_container_width=True):
@@ -399,6 +427,9 @@ with shop_tab:
                 else:
                     st.markdown(risk_badge(fit["return_risk"]), unsafe_allow_html=True)
                     st.write(fit["guidance"])
+                    if fit.get("live_guidance"):
+                        tag = "🔴 live" if fit.get("used_live_model") else "⚪ fallback"
+                        st.info(f"**{tag}**, on your note — {fit['live_guidance']}")
 
             if st.session_state.stylist_offer:
                 render_offer(st.session_state.stylist_offer)
@@ -601,8 +632,21 @@ with admin_tab:
 
     st.divider()
     st.subheader("Audit trail")
-    st.caption("Every tool call and model call, policy-checked (§05) — moved here from the shop view.")
+    st.caption(
+        "Every tool call and model call, policy-checked (§05) — moved here from the shop view. "
+        "`created_at` is written by SQLite's own `datetime('now')` default (UTC) at insert time in "
+        "`runtime._log()`, not added after the fact."
+    )
     audit_limit = st.slider("Rows", 5, 100, 20)
-    for row in api_get("/audit", limit=audit_limit)["entries"]:
-        status = "✅" if row["allowed"] else "⛔"
-        st.text(f"{status} {row['caller']:<16} -> {row['tool']:<28} {row['detail'] or ''}")
+    entries = api_get("/audit", limit=audit_limit)["entries"]
+    table_rows = [
+        {
+            "Time (UTC)": row["created_at"],
+            "Status": "✅ allowed" if row["allowed"] else "⛔ denied",
+            "Caller": row["caller"],
+            "Tool": row["tool"],
+            "Detail": row["detail"] or "",
+        }
+        for row in entries
+    ]
+    st.dataframe(table_rows, use_container_width=True, hide_index=True)

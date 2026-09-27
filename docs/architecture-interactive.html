@@ -169,13 +169,6 @@
         <div class="node cat-transport new" data-id="5"><span class="badge">5</span><div class="node-title">MCP Client</div><div class="node-sub">mcp_client.py · internal dispatch</div></div>
       </div>
 
-      <div class="band cross" id="band-security">
-        <div class="band-label">Security &amp; policy-as-code (cross-cutting)</div>
-        <div class="node cat-security" data-id="6"><span class="badge">6</span><div class="node-title">Policy Engine</div><div class="node-sub">policy.py · default-deny</div></div>
-        <div class="node cat-security" data-id="7"><span class="badge">7</span><div class="node-title">Agent Runtime</div><div class="node-sub">runtime.py · invoke_tool()</div></div>
-        <div class="node cat-security" data-id="8"><span class="badge">8</span><div class="node-title">Audit Log</div><div class="node-sub">audit_log table</div></div>
-      </div>
-
       <div class="band" id="band-orchestration">
         <div class="band-label">Orchestration</div>
         <div class="node cat-orchestration" data-id="9"><span class="badge">9</span><div class="node-title">Lead Orchestrator</div><div class="node-sub">orchestrator.py · async</div></div>
@@ -193,6 +186,13 @@
         <div class="node cat-agent" data-id="17"><span class="badge">17</span><div class="node-title">CONCIERGE</div><div class="node-sub">UC4 · upsell</div></div>
         <div class="node cat-agent" data-id="18"><span class="badge">18</span><div class="node-title">TALLY</div><div class="node-sub">UC5 · loyalty</div></div>
         <div class="node cat-security" data-id="19"><span class="badge">19</span><div class="node-title">Human Review Queue</div><div class="node-sub">human_review.py</div></div>
+      </div>
+
+      <div class="band cross" id="band-security">
+        <div class="band-label">Security &amp; policy-as-code (cross-cutting — evaluated when an agent invokes a tool, not upstream of it)</div>
+        <div class="node cat-security" data-id="6"><span class="badge">6</span><div class="node-title">Policy Engine</div><div class="node-sub">policy.py · default-deny</div></div>
+        <div class="node cat-security" data-id="7"><span class="badge">7</span><div class="node-title">Agent Runtime</div><div class="node-sub">runtime.py · invoke_tool()</div></div>
+        <div class="node cat-security" data-id="8"><span class="badge">8</span><div class="node-title">Audit Log</div><div class="node-sub">audit_log table</div></div>
       </div>
 
       <div class="band" id="band-gateway">
@@ -336,7 +336,7 @@ const CONNECTORS = [
   [4,7,"solid"], [7,6,"thin"], [7,8,"thin"],
   [9,10,"dashed"], [9,11,"solid"],
   [11,22,"solid"], [11,21,"dashed"],
-  [7,12,"thin"], [7,13,"thin"], [7,14,"thin"], [7,15,"thin"], [7,16,"thin"], [7,17,"thin"], [7,18,"thin"], [7,19,"thin"],
+  [12,7,"thin"], [13,7,"thin"], [14,7,"thin"], [15,7,"thin"], [16,7,"thin"], [17,7,"thin"], [18,7,"thin"], [19,7,"thin"],
   [9,20,"solid"], [13,20,"solid"], [17,20,"thin"],
   [20,24,"solid"],
   [13,23,"solid"],

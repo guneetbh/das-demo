@@ -59,8 +59,9 @@
   <div class="titleblock">
     <span class="eyebrow">Neu.Tail — Sequence Diagram, Complete Solution Flow</span>
     <h1>One diagram: single-intent (the common case) and multi-intent (ResponseComposer), sharing the same lifelines</h1>
-    <div class="sub">Not a blueprint reproduction (that's Fig. 02 — see docs/fig-02-as-built.html). This used to be two separate pages — one for the single-intent session, one for multi-intent — merged here because the multi-intent path doesn't do anything new until its last few steps: it reuses the exact PERSONA/MUSE/TAILOR calls shown above rather than repeating them.</div>
-    <div class="sub" style="margin-top:8px;">Revised: entry-point arrows (labeled "via MCP" below — ②③⑤ and their multi-intent equivalents) now cross a real MCP boundary (ORCHESTRATOR → MCP Client → MCP Server → Agent Runtime), not a direct Python call. The evaluator loop's internal MUSE→TAILOR call is explicitly labeled the opposite way — still direct, unchanged — that distinction is the whole point. Full transport detail in <a href="architecture-interactive.html">architecture-interactive.html</a>, component 5 onward.</div>
+    <!-- <div class="sub">Not a blueprint reproduction (that's Fig. 02 — see docs/fig-02-as-built.html). This used to be two separate pages — one for the single-intent session, one for multi-intent — merged here because the multi-intent path doesn't do anything new until its last few steps: it reuses the exact PERSONA/MUSE/TAILOR calls shown above rather than repeating them.</div>
+     -->
+    <div class="sub" style="margin-top:8px;">Entry-point arrows (labeled "via MCP" below — ②③⑤ and their multi-intent equivalents) now cross a real MCP boundary (ORCHESTRATOR → MCP Client → MCP Server → Agent Runtime), not a direct Python call. The evaluator loop's internal MUSE→TAILOR call is explicitly labeled the opposite way — still direct, unchanged — that distinction is the whole point. Full transport detail in <a href="architecture-interactive.html">architecture-interactive.html</a>, component 5 onward.</div>
   </div>
 
   <div class="prose">
