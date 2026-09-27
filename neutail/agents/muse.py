@@ -21,7 +21,7 @@ not the three-hardcoded-phrase matcher this used to be. See vector_store.py.
 
 import json
 
-from neutail import contracts, gateway, runtime, vector_store
+from neutail import contracts, gateway, mcp_client, runtime, vector_store
 from neutail.agents import tailor  # noqa: F401 — import registers get_fit_profile
 from neutail.db import get_connection
 
@@ -269,8 +269,13 @@ contracts.register(
 )
 
 
-def run(customer_id: str, segment: str, query: str, top_n: int = 6) -> dict:
-    """MUSE's entry point — the Orchestrator calls this (Fig. 02, step 3)."""
-    return runtime.invoke_tool(
+async def run(customer_id: str, segment: str, query: str, top_n: int = 6) -> dict:
+    """MUSE's entry point — the Orchestrator calls this (Fig. 02, step 3).
+    Dispatches over MCP (mcp_client — real protocol, in-process). Everything
+    *inside* rank_products (the vector search, the evaluator-loop calls to
+    TAILOR) stays exactly as it was — a handler executing server-side calls
+    another tool the same synchronous way it always has; only the boundary
+    the Orchestrator itself crosses to reach MUSE at all is now MCP."""
+    return await mcp_client.call_tool(
         AGENT_NAME, "rank_products", customer_id=customer_id, segment=segment, query=query, top_n=top_n
     )

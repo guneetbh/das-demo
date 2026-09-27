@@ -5,7 +5,7 @@ MUSE calls this same tool to re-rank against return-risk before its
 feed ships, so "muse_agent" is on the allow-list from the start.
 """
 
-from neutail import contracts, runtime
+from neutail import contracts, mcp_client
 from neutail.db import get_connection
 
 AGENT_NAME = "tailor_agent"
@@ -85,6 +85,6 @@ contracts.register(
 )
 
 
-def run(customer_id: str, category: str) -> dict:
+async def run(customer_id: str, category: str) -> dict:
     """TAILOR's entry point — the Orchestrator calls this (Fig. 02, step 5)."""
-    return runtime.invoke_tool(AGENT_NAME, "get_fit_profile", customer_id=customer_id, category=category)
+    return await mcp_client.call_tool(AGENT_NAME, "get_fit_profile", customer_id=customer_id, category=category)

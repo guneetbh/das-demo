@@ -11,7 +11,7 @@ customer's current tier multiplier. Tier itself isn't recomputed here —
 that's a deliberate simplification, not an oversight (see README).
 """
 
-from neutail import contracts, runtime
+from neutail import contracts, mcp_client
 from neutail.db import get_connection
 
 AGENT_NAME = "tally_agent"
@@ -81,10 +81,10 @@ contracts.register(
 )
 
 
-def status(customer_id: str) -> dict:
-    return runtime.invoke_tool(AGENT_NAME, "get_loyalty_status", customer_id=customer_id)
+async def status(customer_id: str) -> dict:
+    return await mcp_client.call_tool(AGENT_NAME, "get_loyalty_status", customer_id=customer_id)
 
 
-def run(customer_id: str, amount: float, source: str = "purchase") -> dict:
+async def run(customer_id: str, amount: float, source: str = "purchase") -> dict:
     """TALLY's entry point — CONCIERGE calls this right after a purchase completes."""
-    return runtime.invoke_tool(AGENT_NAME, "earn_points", customer_id=customer_id, amount=amount, source=source)
+    return await mcp_client.call_tool(AGENT_NAME, "earn_points", customer_id=customer_id, amount=amount, source=source)

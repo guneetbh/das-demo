@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Neu.Tail — Current Implementation Sequence + Planned ResponseComposer</title>
+<title>Neu.Tail — Complete Solution Sequence (single-intent + multi-intent)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
     --accent-agent:#8C5A0F; --accent-agent-fill:#F3E7CF;
     --accent-new:#B23A48; --accent-new-fill:#F7E3E1;
     --accent-vector:#0F766E; --accent-vector-fill:#DCF3F0;
-    --accent-planned:#7A8178; --accent-planned-fill:#E9ECE6;
+    --accent-composer:#6A3FA0; --accent-composer-fill:#EDE3F5;
     --font-display:'IBM Plex Sans Condensed','Arial Narrow',sans-serif;
     --font-body:'IBM Plex Serif',Georgia,serif;
     --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
@@ -40,17 +40,16 @@
   .swatch.agent{background:var(--accent-agent);}
   .swatch.infra{background:var(--accent-infra);}
   .swatch.vector{background:var(--accent-vector);}
-  .swatch.planned{background:var(--accent-planned);}
+  .swatch.composer{background:var(--accent-composer);}
   .lineswatch{width:18px; height:0; border-top:2px solid var(--text-muted); display:inline-block;}
   .lineswatch.dash{border-top-style:dashed;}
-  .lineswatch.planneddash{border-top-style:dashed; border-top-color:var(--accent-planned);}
   table.t{width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px;}
   table.t th{font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); text-align:left; padding:8px 10px; border-bottom:1px solid var(--rule);}
   table.t td{padding:9px 10px; border-bottom:1px solid var(--rule); vertical-align:top;}
   table.t tr:last-child td{border-bottom:none;}
   .tag{display:inline-block; font-family:var(--font-mono); font-size:10.5px; padding:2px 7px; border-radius:2px; white-space:nowrap;}
   .tag.new{color:var(--accent-new); background:var(--accent-new-fill);}
-  .tag.planned{color:var(--accent-planned); background:var(--accent-planned-fill);}
+  .tag.composer{color:var(--accent-composer); background:var(--accent-composer-fill);}
   footer{margin-top:40px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); border-top:1px solid var(--rule); padding-top:14px;}
 </style>
 </head>
@@ -58,32 +57,33 @@
 <div class="sheet">
 
   <div class="titleblock">
-    <span class="eyebrow">Neu.Tail — Sequence Diagram, Current Implementation</span>
-    <h1>One session, as the code runs it today — plus a planned ResponseComposer</h1>
-    <div class="sub">Not a blueprint reproduction (that's Fig. 02 — see docs/fig-02-as-built.html). This traces what the code actually does right now, in one continuous narrative: intent routing, PERSONA, MUSE's vector-search-backed discovery with the real evaluator loop, TAILOR fit, and CARE/SENTRY/CONCIERGE/TALLY upsell — then adds one thing that doesn't exist yet, greyed out on purpose.</div>
+    <span class="eyebrow">Neu.Tail — Sequence Diagram, Complete Solution Flow</span>
+    <h1>One diagram: single-intent (the common case) and multi-intent (ResponseComposer), sharing the same lifelines</h1>
+    <div class="sub">Not a blueprint reproduction (that's Fig. 02 — see docs/fig-02-as-built.html). This used to be two separate pages — one for the single-intent session, one for multi-intent — merged here because the multi-intent path doesn't do anything new until its last few steps: it reuses the exact PERSONA/MUSE/TAILOR calls shown above rather than repeating them.</div>
+    <div class="sub" style="margin-top:8px;">Revised: entry-point arrows (labeled "via MCP" below — ②③⑤ and their multi-intent equivalents) now cross a real MCP boundary (ORCHESTRATOR → MCP Client → MCP Server → Agent Runtime), not a direct Python call. The evaluator loop's internal MUSE→TAILOR call is explicitly labeled the opposite way — still direct, unchanged — that distinction is the whole point. Full transport detail in <a href="architecture-interactive.html">architecture-interactive.html</a>, component 5 onward.</div>
   </div>
 
   <div class="prose">
-    <p>Everything in solid color below is real and live-verified (see README.md / RUNBOOK.md for the evidence each line cites). The single grey, dashed block at the bottom — <strong>RESPONSECOMPOSER</strong> — is <em>not</em> built: today, <code>orchestrator.classify_intent()</code> returns exactly one intent (<code>discovery</code> | <code>fit</code> | <code>service</code> | <code>unknown</code>), and <code>handle_message()</code> is a plain <code>if</code>/<code>elif</code> chain — never a fan-out to more than one specialist per message. A ResponseComposer only becomes necessary once that changes: a compound request (e.g. "recommend something for date night <em>and</em> what's my loyalty balance") would dispatch PERSONA+MUSE and TALLY independently and in parallel, and something has to merge their two answers into one reply before it reaches the Orchestrator. That's drawn as a hypothetical, not a real path.</p>
+    <p>Everything below is solid color — real and live-verified (see README.md / RUNBOOK.md for the evidence each line cites). <code>orchestrator.classify_intents()</code> decides which of the two parts below a message takes: almost every message classifies to exactly one intent and takes the main sequence (① – ⑧) — the overwhelming common case, and the only path that existed before multi-intent was built. Below the divider, a compound message ("show me something for date night, <em>and</em> check my fit for jeans") classifies as two, and the same PERSONA/MUSE/TAILOR calls already drawn above run again independently, for a real customer message — the only genuinely new step is RESPONSECOMPOSER merging both results into one reply.</p>
   </div>
 
   <div class="diagram">
-    <div class="fig-label">CURRENT IMPLEMENTATION — ONE CONTINUOUS SESSION (discovery → fit → upsell), AS THE CODE RUNS IT</div>
+    <div class="fig-label">COMPLETE SOLUTION — SINGLE-INTENT SESSION (①–⑧), THEN MULTI-INTENT REUSING THE SAME LIFELINES</div>
     <div class="legend">
       <span><i class="lineswatch"></i>Call</span>
       <span><i class="lineswatch dash"></i>Response</span>
       <span><i class="swatch agent"></i>Agent (policy-checked, audit-logged via runtime.invoke_tool)</span>
       <span><i class="swatch infra"></i>Data Universe (SQLite)</span>
-      <span><i class="swatch vector"></i>Vector Store — new since Fig. 02b (Chroma / token-overlap fallback)</span>
-      <span><i class="swatch planned"></i>Planned — not implemented</span>
+      <span><i class="swatch vector"></i>Vector Store (Chroma / token-overlap fallback)</span>
+      <span><i class="swatch composer"></i>response_composer.py — plain module, not an agent</span>
     </div>
-    <svg viewBox="0 0 1490 1400" role="img" aria-label="Sequence diagram of the current Neu.Tail implementation: Client, Orchestrator, PERSONA, MUSE, Vector Store, TAILOR, CONCIERGE, TALLY, Data Universe and a greyed-out planned RESPONSECOMPOSER lifeline. Shows live intent classification, PERSONA segment resolution, MUSE's vector-search candidate retrieval and real per-category TAILOR evaluator loop with diversity cap, session memory, a second TAILOR fit lookup, CARE/SENTRY-gated CONCIERGE upsell with real TALLY point accrual and human-in-the-loop escalation, cross-session memory, the audit trail, and a hypothetical dashed flow into the planned ResponseComposer for a future multi-intent request.">
+    <svg viewBox="0 0 1490 1560" role="img" aria-label="Sequence diagram of the complete Neu.Tail implementation, in two parts sharing the same lifelines: Client, Orchestrator, PERSONA, MUSE, Vector Store, TAILOR, CONCIERGE, TALLY, Data Universe and RESPONSECOMPOSER. The top part shows one single-intent session — live intent classification, PERSONA segment resolution, MUSE's vector-search candidate retrieval with the real per-category TAILOR evaluator loop and diversity cap, session memory, a second TAILOR fit lookup, CARE/SENTRY-gated CONCIERGE upsell with TALLY point accrual and human-in-the-loop escalation, cross-session memory, and the audit trail. Below a divider, the bottom part shows a compound message classified as two intents, reusing the same PERSONA/MUSE and TAILOR calls independently before RESPONSECOMPOSER merges both results into one reply, with a callout on the corrected placement: specialists reply to the Orchestrator directly, never to RESPONSECOMPOSER.">
       <defs>
         <marker id="curArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker>
         <marker id="curArrowInfra" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-infra)"/></marker>
         <marker id="curArrowAgent" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-agent)"/></marker>
         <marker id="curArrowVector" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-vector)"/></marker>
-        <marker id="curArrowPlanned" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-planned)"/></marker>
+        <marker id="curArrowComposer" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-composer)"/></marker>
       </defs>
 
       <!-- ===================== LIFELINE HEADERS ===================== -->
@@ -125,28 +125,28 @@
         <text x="1265" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-infra)">DATA UNIVERSE</text>
         <text x="1265" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--text-muted)">CRM·catalog·txn</text>
 
-        <rect x="1350" y="20" width="130" height="44" rx="2" fill="var(--accent-planned-fill)" stroke="var(--accent-planned)" stroke-dasharray="4 3"/>
-        <text x="1415" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-planned)">RESPONSECOMPOSER</text>
-        <text x="1415" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--accent-planned)">planned — not built</text>
+        <rect x="1350" y="20" width="130" height="44" rx="2" fill="var(--accent-composer-fill)" stroke="var(--accent-composer)"/>
+        <text x="1415" y="39" text-anchor="middle" font-weight="700" font-size="11" fill="var(--accent-composer)">RESPONSECOMPOSER</text>
+        <text x="1415" y="53" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="var(--accent-composer)">merges 2+ intents</text>
       </g>
 
       <!-- lifelines -->
       <g stroke="currentColor" stroke-opacity=".28" stroke-dasharray="2 4">
-        <line x1="65" y1="64" x2="65" y2="1320"/><line x1="215" y1="64" x2="215" y2="1320"/><line x1="365" y1="64" x2="365" y2="1320"/>
-        <line x1="515" y1="64" x2="515" y2="1320"/><line x1="815" y1="64" x2="815" y2="1320"/><line x1="965" y1="64" x2="965" y2="1320"/>
-        <line x1="1115" y1="64" x2="1115" y2="1320"/><line x1="1265" y1="64" x2="1265" y2="1320"/>
+        <line x1="65" y1="64" x2="65" y2="1480"/><line x1="215" y1="64" x2="215" y2="1480"/><line x1="365" y1="64" x2="365" y2="1480"/>
+        <line x1="515" y1="64" x2="515" y2="1480"/><line x1="815" y1="64" x2="815" y2="1480"/><line x1="965" y1="64" x2="965" y2="1480"/>
+        <line x1="1115" y1="64" x2="1115" y2="1480"/><line x1="1265" y1="64" x2="1265" y2="1480"/>
       </g>
-      <line x1="665" y1="64" x2="665" y2="1320" stroke="var(--accent-vector)" stroke-opacity=".35" stroke-dasharray="2 4"/>
-      <line x1="1415" y1="64" x2="1415" y2="1320" stroke="var(--accent-planned)" stroke-opacity=".5" stroke-dasharray="3 4"/>
+      <line x1="665" y1="64" x2="665" y2="1480" stroke="var(--accent-vector)" stroke-opacity=".35" stroke-dasharray="2 4"/>
+      <line x1="1415" y1="64" x2="1415" y2="1480" stroke="var(--accent-composer)" stroke-opacity=".35" stroke-dasharray="2 4"/>
 
       <!-- ===================== ① INTENT + CONFIDENCE CHECK ===================== -->
       <line x1="65" y1="92" x2="215" y2="92" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
       <text x="140" y="85" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">① "show me something for date night"</text>
       <path d="M215,108 L261,108 L261,132 L215,132" fill="none" stroke="var(--accent-agent)" stroke-width="1.6" marker-end="url(#curArrowAgent)"/>
-      <text x="269" y="123" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">classify_intent() — live fast-tier model, keyword matcher fallback <tspan fill="var(--text-muted)">(reflection; confidence &lt; 0.5 or "unknown" → clarify, no route)</tspan></text>
+      <text x="269" y="123" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">classify_intents() — live fast-tier model, keyword matcher fallback <tspan fill="var(--text-muted)">(reflection; confidence &lt; 0.5 or "unknown" → clarify, no route)</tspan></text>
 
       <line x1="215" y1="160" x2="365" y2="160" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
-      <text x="290" y="153" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">route → PERSONA (intent: discovery, confidence ≥ 0.5)</text>
+      <text x="290" y="153" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">route → PERSONA, via MCP (one qualifying intent: discovery, confidence ≥ 0.5)</text>
 
       <!-- ===================== ② PERSONA ===================== -->
       <line x1="365" y1="188" x2="1265" y2="188" stroke="var(--accent-infra)" marker-end="url(#curArrowInfra)"/>
@@ -158,7 +158,7 @@
 
       <!-- ===================== ③ MUSE — vector search + evaluator loop ===================== -->
       <line x1="215" y1="264" x2="515" y2="264" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
-      <text x="365" y="257" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">③ rank_products(segment, query, top_n=4)</text>
+      <text x="365" y="257" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">③ rank_products(segment, query, top_n=4), via MCP</text>
 
       <line x1="515" y1="292" x2="665" y2="292" stroke="var(--accent-vector)" marker-end="url(#curArrowVector)"/>
       <text x="590" y="285" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-vector)">semantic_search(query, top_k=300)</text>
@@ -171,7 +171,7 @@
       <text x="890" y="357" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">candidate rows (name · price · tier · trending · in-stock)</text>
 
       <line x1="515" y1="392" x2="815" y2="392" stroke="var(--accent-agent)" marker-end="url(#curArrowAgent)"/>
-      <text x="665" y="385" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">get_fit_profile × N distinct categories <tspan fill="var(--text-muted)">(evaluator loop — deduped per category, not per SKU)</tspan></text>
+      <text x="665" y="385" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">get_fit_profile × N distinct categories <tspan fill="var(--text-muted)">(evaluator loop — deduped per category, direct call, NOT via MCP — see architecture-interactive.html #5)</tspan></text>
       <line x1="815" y1="416" x2="515" y2="416" stroke="var(--accent-agent)" stroke-dasharray="4 3" marker-end="url(#curArrowAgent)"/>
       <text x="665" y="409" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">return_risk per category (guided 12% vs. computed population baseline)</text>
 
@@ -195,7 +195,7 @@
       <line x1="65" y1="640" x2="215" y2="640" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
       <text x="140" y="633" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">"check my fit" (product detail page)</text>
       <line x1="215" y1="664" x2="815" y2="664" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
-      <text x="515" y="657" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">⑤ get_fit_profile(customer_id, category)</text>
+      <text x="515" y="657" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--text-muted)">⑤ get_fit_profile(customer_id, category), via MCP</text>
       <line x1="815" y1="688" x2="1265" y2="688" stroke="var(--accent-infra)" marker-end="url(#curArrowInfra)"/>
       <text x="1040" y="681" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent-infra)">fit_profile + returns for this category</text>
       <line x1="1265" y1="712" x2="815" y2="712" stroke="var(--accent-infra)" stroke-dasharray="4 3" marker-end="url(#curArrowInfra)"/>
@@ -239,47 +239,61 @@
       <!-- ===================== ⑧ AUDIT TRAIL ===================== -->
       <rect x="0" y="1126" width="1330" height="40" rx="2" fill="var(--surface-2)" stroke="var(--accent-agent)" stroke-dasharray="4 3"/>
       <text x="665" y="1142" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-agent)">AUDIT TRAIL</text>
-      <text x="665" y="1156" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">every arrow above — including vector_store:search and model_gateway:&lt;tier&gt; — is one audit_log row, policy-checked, in call order, not a curated summary</text>
+      <text x="665" y="1156" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">every arrow above — including vector_store:search and model_gateway:&lt;tier&gt; — is one audit_log row, policy-checked, in call order (true for both flows below)</text>
 
-      <!-- ===================== PLANNED — RESPONSECOMPOSER ===================== -->
-      <rect x="0" y="1182" width="1490" height="24" rx="2" fill="var(--accent-planned-fill)" stroke="var(--accent-planned)" stroke-dasharray="4 3"/>
-      <text x="745" y="1198" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-planned)">BELOW THIS LINE — PLANNED, NOT IMPLEMENTED: a hypothetical compound request, "recommend something for date night AND what's my loyalty balance"</text>
+      <!-- ===================== MULTI-INTENT — REAL, REUSING THE SAME LIFELINES ===================== -->
+      <rect x="0" y="1182" width="1490" height="24" rx="2" fill="var(--accent-composer-fill)" stroke="var(--accent-composer)"/>
+      <text x="745" y="1198" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-composer)">BELOW THIS LINE — MULTI-INTENT (real, built): one compound message, "show me something for date night, and check my fit for jeans"</text>
 
-      <line x1="65" y1="1230" x2="215" y2="1230" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="140" y="1223" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-planned)">compound message — two intents in one turn</text>
+      <line x1="65" y1="1230" x2="215" y2="1230" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
+      <text x="140" y="1223" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">compound message — two asks, one turn</text>
 
-      <path d="M215,1246 L245,1246 L245,1258 L215,1258" fill="none" stroke="var(--accent-planned)" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="253" y="1257" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent-planned)">classify_intent() would need multi-label output, not one of 4 — doesn't exist today</text>
+      <path d="M215,1246 L261,1246 L261,1270 L215,1270" fill="none" stroke="var(--accent-agent)" stroke-width="1.6" marker-end="url(#curArrowAgent)"/>
+      <text x="269" y="1261" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-agent)">classify_intents() → [("discovery", 0.95), ("fit", 0.88)] — <tspan fill="var(--text-muted)">both clear CONFIDENCE_THRESHOLD (vs. one intent above)</tspan></text>
 
-      <line x1="215" y1="1278" x2="515" y2="1278" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="365" y="1271" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-planned)">fan out ∥ (a): PERSONA → MUSE, independently</text>
-      <line x1="215" y1="1300" x2="1115" y2="1300" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="665" y="1293" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-planned)">fan out ∥ (b): TALLY, independently — runs concurrently with (a), no shared state needed</text>
+      <line x1="215" y1="1294" x2="515" y2="1294" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
+      <text x="365" y="1287" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">_handle_discovery — same PERSONA + MUSE calls as ②③ above, unchanged</text>
+      <line x1="515" y1="1318" x2="215" y2="1318" stroke="currentColor" stroke-opacity=".65" stroke-dasharray="4 3" marker-end="url(#curArrow)"/>
+      <text x="365" y="1311" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">ranked feed — replies to ORCHESTRATOR; writes last_results to session memory</text>
 
-      <line x1="515" y1="1324" x2="1415" y2="1324" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <line x1="1115" y1="1324" x2="1415" y2="1348" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="1415" y="1310" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-planned)">(a) and (b) results</text>
-      <text x="1415" y="1365" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent-planned)">merges both into one reply</text>
+      <line x1="215" y1="1342" x2="815" y2="1342" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
+      <text x="515" y="1335" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">_handle_fit — same TAILOR call as ⑤ above; category resolved from the session state the discovery handler just wrote, no explicit reference needed</text>
+      <line x1="815" y1="1366" x2="215" y2="1366" stroke="currentColor" stroke-opacity=".65" stroke-dasharray="4 3" marker-end="url(#curArrow)"/>
+      <text x="515" y="1359" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">size-up guidance · return-risk ↓ — replies to ORCHESTRATOR directly</text>
 
-      <line x1="1415" y1="1378" x2="215" y2="1378" stroke="var(--accent-planned)" stroke-dasharray="3 3" marker-end="url(#curArrowPlanned)"/>
-      <text x="815" y="1371" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-planned)">one composed response — products + loyalty balance together</text>
+      <rect x="0" y="1384" width="1490" height="64" rx="2" fill="var(--accent-composer-fill)" stroke="var(--accent-composer)" stroke-dasharray="4 3"/>
+      <text x="745" y="1401" text-anchor="middle" font-family="IBM Plex Mono" font-weight="600" font-size="9.5" fill="var(--accent-composer)">PLACEMENT, CORRECTED — decided before writing any code</text>
+      <text x="745" y="1415" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text)">PERSONA, MUSE and TAILOR never talk to RESPONSECOMPOSER — each replies to ORCHESTRATOR, exactly like the single-intent flow above</text>
+      <text x="745" y="1428" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">ORCHESTRATOR alone collects both results, then makes one call out to compose() and back — not a hop other agents route through</text>
+      <text x="745" y="1441" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">this same principle was reused, later, for MCP Client's own boundary — see architecture-interactive.html #5</text>
+
+      <line x1="215" y1="1460" x2="1415" y2="1460" stroke="var(--accent-composer)" marker-end="url(#curArrowComposer)"/>
+      <text x="815" y="1453" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-composer)">response_composer.compose([discovery_result, fit_result], intent_live_model)</text>
+      <line x1="1415" y1="1484" x2="215" y2="1484" stroke="var(--accent-composer)" stroke-dasharray="4 3" marker-end="url(#curArrowComposer)"/>
+      <text x="815" y="1477" text-anchor="middle" font-family="IBM Plex Mono" font-size="9" fill="var(--accent-composer)">{"type":"composite","parts":[discovery,fit],"summary":"Here's some product recommendations, and fit guidance."} — no audit_log row: not policy-gated, a plain function call</text>
+
+      <line x1="215" y1="1508" x2="65" y2="1508" stroke="currentColor" stroke-opacity=".65" marker-end="url(#curArrow)"/>
+      <text x="140" y="1501" text-anchor="middle" font-family="IBM Plex Mono" font-size="9">composed reply (summary + both parts)</text>
+
+      <rect x="0" y="1524" width="1490" height="30" rx="2" fill="var(--surface-2)" stroke="var(--rule)"/>
+      <text x="745" y="1543" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--text-muted)">Safe by construction: classify_intents() almost always returns exactly one entry, taking the ①–⑧ path above unchanged — verified via run_demo.py's full §06 script, unaffected.</text>
     </svg>
-    <figcaption>Solid color = built and live-verified today (see README.md's per-feature sections and RUNBOOK.md for the evidence each line cites). Grey dashed = RESPONSECOMPOSER and everything below the "planned" divider — no code path today produces more than one intent per message, so nothing merges independent agents' answers because nothing runs them independently in the first place.</figcaption>
+    <figcaption>Solid color throughout — nothing here is hypothetical. This single page replaces what used to be two: the single-intent session (①–⑧) and a separate multi-intent + ResponseComposer diagram, merged because the bottom half doesn't introduce a new PERSONA/MUSE/TAILOR path, only a new step after they've already replied.</figcaption>
   </div>
 
   <table class="t">
-    <tr><th>Piece</th><th>Status</th><th>Where in the code</th></tr>
-    <tr><td>Vector search retrieval (MUSE)</td><td><span class="tag new">built</span></td><td><code>neutail/vector_store.py</code>, called from <code>muse._candidates()</code></td></tr>
-    <tr><td>Evaluator loop (MUSE ⇄ TAILOR)</td><td><span class="tag new">built</span></td><td><code>muse._candidates()</code> — per-category, deduped</td></tr>
-    <tr><td>Diversity cap + prompt prefilter</td><td><span class="tag new">built</span></td><td><code>muse._apply_diversity_cap</code>, <code>_prefilter_for_prompt</code></td></tr>
-    <tr><td>TALLY points on subscription + order</td><td><span class="tag new">built</span></td><td><code>agents/tally.py</code>, wired from <code>concierge.py</code> and <code>human_review.py</code></td></tr>
-    <tr><td>Human-in-the-loop escalation (both kinds)</td><td><span class="tag new">built</span></td><td><code>sentry.py</code> writes, <code>human_review.py</code> resolves</td></tr>
-    <tr><td>Multi-intent classification</td><td><span class="tag planned">planned</span></td><td>would replace <code>VALID_INTENTS</code>'s single-label shape in <code>orchestrator.py</code></td></tr>
-    <tr><td>RESPONSECOMPOSER</td><td><span class="tag planned">planned</span></td><td>doesn't exist — nothing to point at yet</td></tr>
+    <tr><th>Piece</th><th>Where in the code</th></tr>
+    <tr><td>Vector search retrieval (MUSE)</td><td><code>neutail/vector_store.py</code>, called from <code>muse._candidates()</code></td></tr>
+    <tr><td>Evaluator loop (MUSE ⇄ TAILOR)</td><td><code>muse._candidates()</code> — per-category, deduped</td></tr>
+    <tr><td>Diversity cap + prompt prefilter</td><td><code>muse._apply_diversity_cap</code>, <code>_prefilter_for_prompt</code></td></tr>
+    <tr><td>TALLY points on subscription + order</td><td><code>agents/tally.py</code>, wired from <code>concierge.py</code> and <code>human_review.py</code></td></tr>
+    <tr><td>Human-in-the-loop escalation (both kinds)</td><td><code>sentry.py</code> writes, <code>human_review.py</code> resolves</td></tr>
+    <tr><td>Multi-label classification</td><td><code>orchestrator.classify_intents()</code></td></tr>
+    <tr><td><span class="tag composer">RESPONSECOMPOSER</span></td><td><code>response_composer.py</code>, called from <code>orchestrator.handle_message()</code></td></tr>
   </table>
 
   <footer>
-    Companion to docs/fig-02-as-built.html (the original blueprint's Fig. 02 vs. its early deltas) and RUNBOOK-sequence.md. This diagram reflects the codebase as of the vector-database and MCP-layer work — MCP is a separate transport straight into runtime.invoke_tool() (see neutail/mcp_server.py) and isn't drawn here since it never touches the Orchestrator.
+    Companion to docs/fig-02-as-built.html (the original blueprint's Fig. 02 vs. its early deltas), RUNBOOK-sequence.md, and docs/architecture-interactive.html (the component-level view — start at #5 for the MCP transport detail this page's "via MCP" labels refer to but don't draw explicitly). Full design rationale and regression evidence for the multi-intent section are in README.md's "Multi-intent classification and ResponseComposer" and RUNBOOK.md's matching demo beat.
   </footer>
 
 </div>

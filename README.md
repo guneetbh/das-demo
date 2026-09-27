@@ -42,6 +42,7 @@ to plain `sqlite3` if it's not there.
 | `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
 | `neutail/vector_store.py` | Vector database for MUSE's candidate retrieval — Chroma (local ONNX embeddings, persisted to `data/chroma/`) when importable, else a token-overlap index. Same live/fallback shape again — see "Vector search" below |
 | `neutail/mcp_server.py` | MCP layer — the database + vector store over HTTP/SSE (`:8765`) for any MCP client. See "MCP layer" below |
+| `neutail/response_composer.py` | Merges 2+ per-intent results into one reply for a multi-intent message. Plain module, not an agent — see "Multi-intent classification" below |
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing (live fast-tier call, keyword fallback), the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
@@ -354,6 +355,63 @@ instead of a Python import.
 `MCPServer` with a different API; `1.30.0` is the last release on the
 stable v1 shape this file uses.
 
+## Multi-intent classification and ResponseComposer
+
+`orchestrator.classify_intents()` (plural) returns a *list* of
+`(intent, confidence)` pairs instead of one. Almost every message still
+classifies to exactly one — the entire single-intent path below it is a
+verbatim extraction of what `handle_message()` used to do inline
+(`_handle_discovery`/`_handle_fit`/`_handle_service`, keyed by intent in
+`_HANDLERS`), so nothing about today's demo script changed. What's new
+is a message that genuinely asks for two things at once, e.g. **"show me
+something for date night, and check my fit for jeans"** — the live
+fast-tier classifier (and, mirroring it, the keyword fallback) can now
+return `["discovery", "fit"]` instead of forcing a pick. When 2+
+classified intents each clear `CONFIDENCE_THRESHOLD`, `handle_message()`
+runs each one's existing handler independently — same call each would
+make alone, no awareness of the others — and hands the results to
+`response_composer.compose()`, which merges them into one reply:
+`{"type": "composite", "parts": [...], "summary": "..."}`.
+
+**Deliberately conservative, to avoid regressing the common case.** The
+classifier prompt is explicit: return more than one entry *only* when
+the message clearly asks for separate things, never split a single
+request into artificial parts. The keyword fallback's old behavior for
+"matched more than one category" used to mean *ambiguity about a single
+intent* (pick the first, at a knocked-down 0.6 confidence); it's now read
+as genuine multi-intent evidence instead (each kept, at 0.75) — checked
+against every existing demo phrase in `RUNBOOK.md` to confirm none of
+them ever accidentally matched two keyword categories, so this is a real
+behavior change with zero observed regression risk, not just a
+theoretical one.
+
+**Not an agent, on purpose.** `response_composer.py` has no tool
+contract, no policy check, no audit-log entry of its own — the same
+reasoning that keeps `gateway.py`/`session_store.py`/`vector_store.py` as
+plain modules: it touches no database and calls no model, so there's
+nothing to policy-gate. Its placement matters more than its size: each
+specialist still returns to the Orchestrator directly, exactly as for a
+single-intent message — nothing here receives an agent's result before
+the Orchestrator does. `handle_message()` collects every qualifying
+intent's result itself, then makes *one* call out to `compose()` and
+back. A composer that instead sat between the agents and the Orchestrator
+(agents calling it directly) would have no precedent anywhere else in
+this codebase, where every agent always replies to whoever called it —
+this was a real design correction made before writing any code, not an
+afterthought.
+
+**Verified**, live and on fallback, discovery+fit and discovery+service:
+the compound jeans example above actually resolves the fit part against
+the *discovery* part's own just-computed results (`_handle_discovery`
+runs first per `_HANDLERS`' iteration order and writes `last_results` to
+session memory before `_handle_fit` reads it in the same call) — Priya's
+jeans SKU surfaces in the product grid *and* gets her real guided fit
+answer (size up, 12% risk), an emergent side effect of handler order, not
+special-cased. Full audit trail for a composite call shows both branches'
+tool calls in real order (`model_gateway:fast` once, then every tool call
+each qualifying handler makes), same transparency as any single-intent
+call.
+
 ## Getting the live model actually working
 
 Turning on `ANTHROPIC_API_KEY` for real surfaced four separate issues,
@@ -436,7 +494,7 @@ answered a given call.
 
 ## Live intent classification
 
-`orchestrator.classify_intent()` used to be pure keyword matching —
+`orchestrator.classify_intents()` used to be pure keyword matching —
 deliberate originally, so routing never paid reasoning-model latency.
 That meant anything outside a short hardcoded phrase list (`"date
 night"`, `"show me"`, `"styling question"`, ...) scored confidence 0.2
@@ -530,7 +588,7 @@ balance immediately rather than on the next unrelated click.
 ## The three additions from §03, as code (not just diagram)
 
 - **Evaluator-optimizer loop** — `muse.py`'s `_candidates()` calls `get_fit_profile` for every candidate's category before ranking. Priya's jeans score 12% return-risk (her seeded fit history) against a ~35-40% computed baseline for customers with none, and the ranking reflects it.
-- **Reflection / confidence check** — `orchestrator.classify_intent()` (live fast-tier call, keyword matcher as fallback — see "Live intent classification" below) returns a confidence score alongside the intent; below `CONFIDENCE_THRESHOLD` (0.5), or whenever the intent itself is `"unknown"`, `handle_message()` returns a clarifying question instead of routing to a specialist.
+- **Reflection / confidence check** — `orchestrator.classify_intents()` (live fast-tier call, keyword matcher as fallback — see "Live intent classification" below) returns a confidence score alongside each intent; below `CONFIDENCE_THRESHOLD` (0.5), or whenever the primary intent is `"unknown"`, `handle_message()` returns a clarifying question instead of routing to a specialist.
 - **Human-in-the-loop** — `sentry.py` has no special escalation wire. It writes to `escalations` through the same tool path as any other agent; `concierge.py` reads `approved: False` back and reports `"status": "pending human review"` rather than treating it as a denial.
 
 ## Product images

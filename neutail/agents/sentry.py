@@ -7,7 +7,7 @@ CONCIERGE reads that status back instead of treating "not approved" as
 a denial.
 """
 
-from neutail import contracts, runtime
+from neutail import contracts, mcp_client
 from neutail.db import get_connection
 
 AGENT_NAME = "sentry_agent"
@@ -73,8 +73,8 @@ contracts.register(
 )
 
 
-def run(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
+async def run(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
     """SENTRY's entry point — the Orchestrator/CONCIERGE calls this (Fig. 02, step 6)."""
-    return runtime.invoke_tool(
+    return await mcp_client.call_tool(
         AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind=kind, sku=sku
     )

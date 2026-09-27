@@ -4,7 +4,7 @@ Masks raw contact fields per the PII & consent policy (§05) and flags
 whether this customer is worth CONCIERGE composing an upsell offer for.
 """
 
-from neutail import contracts, runtime
+from neutail import contracts, mcp_client
 from neutail.db import get_connection
 
 AGENT_NAME = "care_agent"
@@ -51,6 +51,6 @@ contracts.register(
 )
 
 
-def run(customer_id: str) -> dict:
+async def run(customer_id: str) -> dict:
     """CARE's entry point — the Orchestrator calls this (Fig. 02, step 6)."""
-    return runtime.invoke_tool(AGENT_NAME, "resolve_contact", customer_id=customer_id)
+    return await mcp_client.call_tool(AGENT_NAME, "resolve_contact", customer_id=customer_id)

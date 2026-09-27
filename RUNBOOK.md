@@ -280,6 +280,24 @@ a rejection, it's a pause.
   and both the allowed and denied calls show up in `GET /audit` under
   `caller=mcp_client`, same as anything else. The point: MCP is just
   another transport onto the same policy-checked runtime, not a bypass.
+- **Multi-intent: one message, two specialists, one composed reply** — in
+  the search bar, as **Priya**, type `show me something for date night,
+  and check my fit for jeans`. **Expect:** not a single product grid or a
+  single fit answer, but both — a one-line summary ("Here's some product
+  recommendations, and fit guidance."), then the product grid, then the
+  fit guidance below it. Point at the fit answer specifically: it resolves
+  against the *product grid just shown*, not a generic category lookup —
+  `orchestrator.py`'s two handlers ran independently in the same turn,
+  and the fit lookup picked up the discovery results from session memory
+  a few lines later in the same call. Check `GET /audit` afterward: one
+  `model_gateway:fast` call (the classifier returned `["discovery",
+  "fit"]` in one shot), then every tool call each handler makes, in real
+  order — same transparency as any single-intent turn. This is the
+  ResponseComposer piece from the sequence-diagram discussion, now real;
+  see the bottom half of `docs/fig-current-sequence.html` (one diagram
+  now covers both flows) and README.md's "Multi-intent classification and
+  ResponseComposer" for how it's gated to avoid regressing every existing
+  single-intent demo beat above.
 - **The Admin tab** — the business-outcome numbers, computed from the
   seeded population, not asserted: baseline return rate **42.8%**
   drops to **8.2%** once fit guidance exists for that category — a

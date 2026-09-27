@@ -9,6 +9,7 @@ escalation silently did nothing but flip its status, no transactional
 row, no points, "nothing happened" from the reviewer's side).
 """
 
+import asyncio
 import uuid
 
 from neutail import runtime
@@ -30,7 +31,12 @@ def list_escalations(status: str | None = "pending") -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REVIEWER_CALLER) -> dict:
+def _apply_resolution(escalation_id: int, approve: bool, resolved_by: str) -> tuple[str, str | None, dict]:
+    """The synchronous half — reading + updating `escalations` and writing
+    the withheld `transactional` row. Runs inside asyncio.to_thread() from
+    resolve_escalation() below, same as db.py/session_store.py elsewhere:
+    plain sqlite3, not rewritten to an async driver, just kept off the
+    shared event loop when called from async code."""
     conn = get_connection()
     row = conn.execute(
         "SELECT * FROM escalations WHERE escalation_id = ?", (escalation_id,)
@@ -59,13 +65,19 @@ def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REV
                 (order_id, row["customer_id"], row["sku"], row["kind"], row["amount"]),
             )
     conn.close()
+    return new_status, order_id, dict(row)
+
+
+async def resolve_escalation(escalation_id: int, approve: bool, resolved_by: str = REVIEWER_CALLER) -> dict:
+    new_status, order_id, row = await asyncio.to_thread(_apply_resolution, escalation_id, approve, resolved_by)
 
     points = None
     if order_id is not None:
         # the order landed, same as CONCIERGE's direct-approval path — TALLY earns points either way
-        points = tally.run(row["customer_id"], row["amount"], source=row["kind"])
+        points = await tally.run(row["customer_id"], row["amount"], source=row["kind"])
 
-    runtime.log_event(
+    await asyncio.to_thread(
+        runtime.log_event,
         resolved_by, "resolve_escalation", allowed=True,
         detail=f"escalation_id={escalation_id} status={new_status} order_id={order_id}",
     )

@@ -122,6 +122,55 @@ def render_offer(offer: dict) -> None:
     st.caption(offer["offer_text"])
 
 
+def _render_discovery(result: dict) -> None:
+    last_query = st.session_state.get("last_query", "")
+    st.subheader(f"Results for “{last_query}”" if last_query else "Results")
+    cols = st.columns(min(len(result["results"]), 4) or 1)
+    for i, r in enumerate(result["results"]):
+        with cols[i % len(cols)]:
+            with st.container(border=True):
+                st.image(r.get("image_url"), use_container_width=True)
+                st.markdown(f"**{r['name']}**")
+                st.markdown(
+                    f'<span class="ntail-price">${r["price"]:.2f}</span> {tier_badge(r["tier"])}',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(risk_badge(r["return_risk"]), unsafe_allow_html=True)
+                if st.button("View details →", key=f"view-{r['sku']}", use_container_width=True):
+                    open_product(r["sku"])
+    with st.expander("🔧 Behind the scenes"):
+        st.caption(
+            f"segment: `{result['segment']}` · routing confidence {result['confidence']:.0%} "
+            f"(live: {result.get('intent_live_model')}) · ranking live: {result['used_live_model']}"
+        )
+
+
+def _render_fit(result: dict) -> None:
+    st.markdown(f"### {result['category'].title()} fit guidance")
+    st.markdown(risk_badge(result["return_risk"]), unsafe_allow_html=True)
+    st.write(result["guidance"])
+
+
+def _render_service(result: dict) -> None:
+    render_offer(result)
+
+
+def _render_part(part: dict) -> None:
+    """Shared by the top-level result dispatch and the "composite"
+    (multi-intent) branch below — a composite response's `parts` are the
+    exact same per-type dicts a single-intent response would have been, so
+    rendering one is identical either way."""
+    ptype = part.get("type")
+    if ptype == "discovery":
+        _render_discovery(part)
+    elif ptype == "fit":
+        _render_fit(part)
+    elif ptype == "service":
+        _render_service(part)
+    else:
+        st.json(part)
+
+
 def open_product(sku: str) -> None:
     st.query_params["sku"] = sku
     st.rerun()
@@ -375,34 +424,25 @@ with shop_tab:
             st.warning(result["message"])
 
         elif result["type"] == "discovery":
-            last_query = st.session_state.get("last_query", "")
-            st.subheader(f"Results for “{last_query}”" if last_query else "Results")
-            cols = st.columns(min(len(result["results"]), 4) or 1)
-            for i, r in enumerate(result["results"]):
-                with cols[i % len(cols)]:
-                    with st.container(border=True):
-                        st.image(r.get("image_url"), use_container_width=True)
-                        st.markdown(f"**{r['name']}**")
-                        st.markdown(
-                            f'<span class="ntail-price">${r["price"]:.2f}</span> {tier_badge(r["tier"])}',
-                            unsafe_allow_html=True,
-                        )
-                        st.markdown(risk_badge(r["return_risk"]), unsafe_allow_html=True)
-                        if st.button("View details →", key=f"view-{r['sku']}", use_container_width=True):
-                            open_product(r["sku"])
-            with st.expander("🔧 Behind the scenes"):
-                st.caption(
-                    f"segment: `{result['segment']}` · routing confidence {result['confidence']:.0%} "
-                    f"(live: {result.get('intent_live_model')}) · ranking live: {result['used_live_model']}"
-                )
+            _render_discovery(result)
 
         elif result["type"] == "fit":
-            st.markdown(f"### {result['category'].title()} fit guidance")
-            st.markdown(risk_badge(result["return_risk"]), unsafe_allow_html=True)
-            st.write(result["guidance"])
+            _render_fit(result)
 
         elif result["type"] == "service":
-            render_offer(result)
+            _render_service(result)
+
+        elif result["type"] == "composite":
+            # Multi-intent — orchestrator.handle_message() dispatched to more
+            # than one specialist independently and response_composer merged
+            # them; each part below is exactly the same dict a single-intent
+            # response would have been, just plural (see RUNBOOK.md).
+            st.subheader(result.get("summary", "Results"))
+            st.caption(f"intents: {', '.join(result.get('intents', []))}")
+            for i, part in enumerate(result["parts"]):
+                if i > 0:
+                    st.divider()
+                _render_part(part)
 
         else:
             st.json(result)

@@ -15,7 +15,7 @@ commit_subscription and commit_order.
 
 import uuid
 
-from neutail import contracts, gateway, runtime
+from neutail import contracts, gateway, mcp_client, runtime
 from neutail.agents import care, sentry, tally  # noqa: F401 — registers resolve_contact, check_payment_policy, earn_points
 from neutail.db import get_connection
 
@@ -153,11 +153,14 @@ contracts.register(
 )
 
 
-def run(customer_id: str, amount: float, plan: str = "standard") -> dict:
-    """CONCIERGE's entry point — the Orchestrator calls this (Fig. 02, step 6)."""
-    return runtime.invoke_tool(AGENT_NAME, "commit_subscription", customer_id=customer_id, amount=amount, plan=plan)
+async def run(customer_id: str, amount: float, plan: str = "standard") -> dict:
+    """CONCIERGE's entry point — the Orchestrator calls this (Fig. 02, step 6).
+    Dispatches over MCP; everything inside commit_subscription (CARE, SENTRY,
+    TALLY) stays a direct, synchronous runtime.invoke_tool() call — those
+    are already server-side once this tool call is being executed."""
+    return await mcp_client.call_tool(AGENT_NAME, "commit_subscription", customer_id=customer_id, amount=amount, plan=plan)
 
 
-def run_order(customer_id: str, sku: str, quantity: int = 1) -> dict:
+async def run_order(customer_id: str, sku: str, quantity: int = 1) -> dict:
     """A plain product purchase — no CARE/offer-text step, just policy + ledger + points."""
-    return runtime.invoke_tool(AGENT_NAME, "commit_order", customer_id=customer_id, sku=sku, quantity=quantity)
+    return await mcp_client.call_tool(AGENT_NAME, "commit_order", customer_id=customer_id, sku=sku, quantity=quantity)

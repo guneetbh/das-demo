@@ -1,0 +1,442 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neu.Tail — Interactive Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EEF0EA; --surface:#F8F9F4; --surface-2:#E6E9E0;
+    --text:#1A2420; --text-muted:#5B6660; --rule:#C9CFC3;
+    --cat-client:#3A4640; --cat-client-fill:#E7EAE3;
+    --cat-transport:#2F4FD1; --cat-transport-fill:#E3E7FB;
+    --cat-security:#B23A48; --cat-security-fill:#F7E3E1;
+    --cat-orchestration:#8C5A0F; --cat-orchestration-fill:#F3E7CF;
+    --cat-composer:#6A3FA0; --cat-composer-fill:#EDE3F5;
+    --cat-agent:#8C5A0F; --cat-agent-fill:#F3E7CF;
+    --cat-gateway:#B8590E; --cat-gateway-fill:#FBE7D4;
+    --cat-sqlite:#2F4FD1; --cat-sqlite-fill:#E3E7FB;
+    --cat-redis:#B0262A; --cat-redis-fill:#F8E1E1;
+    --cat-vector:#0F766E; --cat-vector-fill:#DCF3F0;
+    --cat-external:#5B6660; --cat-external-fill:#EDEEEA;
+    --font-display:'IBM Plex Sans Condensed','Arial Narrow',sans-serif;
+    --font-body:'IBM Plex Serif',Georgia,serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:var(--font-body); line-height:1.6;}
+  .sheet{max-width:1560px; margin:0 auto; padding:40px 24px 90px;}
+  .prose{max-width:88ch;}
+  .prose p{margin:0 0 14px;}
+  h1,h2{font-family:var(--font-display); font-weight:700; margin:0;}
+  .eyebrow{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-muted);}
+  .titleblock{background:var(--surface); border:1px solid var(--rule); padding:22px 26px; margin-bottom:26px;}
+  .titleblock h1{font-size:clamp(20px,3.2vw,28px); margin-top:6px;}
+  .titleblock .sub{font-family:var(--font-body); font-style:italic; color:var(--text-muted); margin-top:6px; font-size:14.5px;}
+  .titleblock .rev{font-family:var(--font-mono); font-size:11px; color:var(--cat-composer); margin-top:10px;}
+
+  /* ---------------------------------------------------- legend ---------------------------------------------------- */
+  .legend{display:flex; gap:16px; margin-bottom:16px; font-family:var(--font-mono); font-size:10.5px; color:var(--text-muted); flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .swatch{width:11px; height:11px; border-radius:2px; display:inline-block;}
+
+  /* ---------------------------------------------------- diagram shell ---------------------------------------------------- */
+  .diagram{background:var(--surface); border:1px solid var(--rule); padding:26px; margin:0 0 26px; position:relative; overflow:visible;}
+  .arch-wrap{position:relative; min-width:1120px;}
+  svg.connectors{position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:visible;}
+
+  .band{position:relative; display:flex; flex-wrap:wrap; gap:14px; justify-content:center; padding:34px 16px 16px; margin-bottom:8px;}
+  .band-label{position:absolute; top:8px; left:12px; font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-muted);}
+  .band.cross{background:var(--surface-2); border-top:1px dashed var(--rule); border-bottom:1px dashed var(--rule);}
+  .band.external{background:transparent;}
+
+  .node{
+    position:relative; width:190px; min-height:78px; padding:12px 14px 10px;
+    background:var(--surface); border:1.5px solid var(--rule); border-radius:3px;
+    cursor:pointer; transition:transform .32s cubic-bezier(.2,.8,.2,1), opacity .28s ease, box-shadow .28s ease, filter .28s ease;
+    font-family:var(--font-display);
+  }
+  .node:hover{box-shadow:0 4px 14px rgba(0,0,0,.10);}
+  .node.new{box-shadow:0 0 0 2px var(--cat-composer);}
+  .node .badge{
+    position:absolute; top:-10px; left:-10px; width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-family:var(--font-mono); font-weight:600; font-size:11.5px;
+    color:#fff; box-shadow:0 1px 4px rgba(0,0,0,.35); z-index:2;
+  }
+  .node .node-title{font-weight:700; font-size:12.5px; line-height:1.25; margin-bottom:3px;}
+  .node .node-sub{font-family:var(--font-mono); font-size:9px; color:var(--text-muted); line-height:1.4;}
+  .node.dimmed{opacity:.22; filter:grayscale(55%); pointer-events:none;}
+  .node.focused{transform:scale(1.16); z-index:40; box-shadow:0 16px 40px rgba(0,0,0,.30);}
+
+  .node.cat-client{border-color:var(--cat-client);} .node.cat-client .badge{background:var(--cat-client);}
+  .node.cat-transport{border-color:var(--cat-transport); background:var(--cat-transport-fill);} .node.cat-transport .badge{background:var(--cat-transport);}
+  .node.cat-security{border-color:var(--cat-security); background:var(--cat-security-fill);} .node.cat-security .badge{background:var(--cat-security);}
+  .node.cat-orchestration{border-color:var(--cat-orchestration); background:var(--cat-orchestration-fill);} .node.cat-orchestration .badge{background:var(--cat-orchestration);}
+  .node.cat-composer{border-color:var(--cat-composer); background:var(--cat-composer-fill);} .node.cat-composer .badge{background:var(--cat-composer);}
+  .node.cat-agent{border-color:var(--cat-agent); background:var(--cat-agent-fill);} .node.cat-agent .badge{background:var(--cat-agent);}
+  .node.cat-gateway{border-color:var(--cat-gateway); background:var(--cat-gateway-fill);} .node.cat-gateway .badge{background:var(--cat-gateway);}
+  .node.cat-sqlite{border-color:var(--cat-sqlite); background:var(--cat-sqlite-fill);} .node.cat-sqlite .badge{background:var(--cat-sqlite);}
+  .node.cat-redis{border-color:var(--cat-redis); background:var(--cat-redis-fill);} .node.cat-redis .badge{background:var(--cat-redis);}
+  .node.cat-vector{border-color:var(--cat-vector); background:var(--cat-vector-fill);} .node.cat-vector .badge{background:var(--cat-vector);}
+  .node.cat-external{border-color:var(--cat-external); background:var(--cat-external-fill); border-style:dashed;} .node.cat-external .badge{background:var(--cat-external);}
+
+  .node.cat-transport .node-title, .node.cat-transport .node-sub{color:var(--cat-transport);}
+  .node.cat-security .node-title, .node.cat-security .node-sub{color:var(--cat-security);}
+  .node.cat-orchestration .node-title, .node.cat-orchestration .node-sub{color:var(--cat-orchestration);}
+  .node.cat-composer .node-title, .node.cat-composer .node-sub{color:var(--cat-composer);}
+  .node.cat-agent .node-title, .node.cat-agent .node-sub{color:var(--cat-agent);}
+  .node.cat-gateway .node-title, .node.cat-gateway .node-sub{color:var(--cat-gateway);}
+  .node.cat-sqlite .node-title, .node.cat-sqlite .node-sub{color:var(--cat-sqlite);}
+  .node.cat-redis .node-title, .node.cat-redis .node-sub{color:var(--cat-redis);}
+  .node.cat-vector .node-title, .node.cat-vector .node-sub{color:var(--cat-vector);}
+  .node.cat-external .node-title, .node.cat-external .node-sub{color:var(--cat-external);}
+
+  /* ---------------------------------------------------- backdrop + detail panel ---------------------------------------------------- */
+  #backdrop{position:fixed; inset:0; background:rgba(20,24,20,.45); opacity:0; pointer-events:none; transition:opacity .28s ease; z-index:60;}
+  #backdrop.open{opacity:1; pointer-events:auto;}
+
+  #detailPanel{
+    position:fixed; top:0; right:0; height:100%; width:min(430px,92vw); background:var(--surface);
+    border-left:1px solid var(--rule); box-shadow:-18px 0 40px rgba(0,0,0,.25); z-index:70;
+    transform:translateX(100%); transition:transform .32s cubic-bezier(.2,.8,.2,1);
+    padding:26px 26px 90px; overflow-y:auto;
+  }
+  #detailPanel.open{transform:translateX(0);}
+  #detailClose{position:absolute; top:18px; right:18px; width:30px; height:30px; border-radius:50%; border:1px solid var(--rule);
+    background:var(--surface-2); cursor:pointer; font-family:var(--font-mono); font-size:14px; color:var(--text);}
+  #detailClose:hover{background:var(--rule);}
+  .detail-tag{display:inline-block; font-family:var(--font-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    padding:3px 9px; border-radius:999px; margin-bottom:10px;}
+  .detail-num{font-family:var(--font-mono); font-size:11px; color:var(--text-muted); margin-bottom:4px;}
+  #detailTitle{font-family:var(--font-display); font-size:22px; font-weight:700; margin:0 0 14px; padding-right:34px;}
+  #detailBody p{margin:0 0 12px; font-size:14px;}
+  #detailBody code{font-family:var(--font-mono); font-size:12.5px; background:var(--surface-2); padding:1px 5px; border-radius:2px;}
+  #detailBody ul{margin:0 0 12px; padding-left:20px; font-size:14px;}
+  #detailBody li{margin-bottom:6px;}
+  .detail-nav{position:absolute; bottom:0; left:0; right:0; display:flex; border-top:1px solid var(--rule); background:var(--surface);}
+  .detail-nav button{flex:1; padding:14px 10px; border:none; background:none; font-family:var(--font-mono); font-size:11px;
+    letter-spacing:.05em; text-transform:uppercase; color:var(--text); cursor:pointer;}
+  .detail-nav button:hover{background:var(--surface-2);}
+  .detail-nav button:first-child{border-right:1px solid var(--rule);}
+
+  footer{margin-top:30px; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); border-top:1px solid var(--rule); padding-top:14px;}
+  .hint{font-family:var(--font-mono); font-size:11px; color:var(--text-muted); margin:-8px 0 20px;}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="titleblock">
+    <span class="eyebrow">Neu.Tail — Interactive Architecture</span>
+    <h1>All 24 components, click any number to zoom in and read what it does</h1>
+    <div class="sub">Every box below is real code in this repo, not a conceptual placeholder — file paths and function names are in each explanation. Layered top to bottom, roughly following a request's path: clients → transport → the security/policy-as-code plane (cross-cutting, shaded) → orchestration → the seven agents + human review → the model gateway → storage (SQLite, Redis, the vector store) → external model providers.</div>
+    <div class="rev">Revised: internal tool dispatch now literally speaks MCP too, not just the external integration — <strong>5. MCP Client</strong> is new; everything from there on is renumbered. See its explanation for what changed and, just as importantly, what deliberately didn't.</div>
+  </div>
+
+  <p class="hint">Click any numbered box (or its badge) to zoom in with an explanation. Click the backdrop, press Escape, or hit ✕ to go back. Use ← Prev / Next → in the panel to step through all 24 in order. The box with a highlighted outline is the one that's new since this diagram was first drawn.</p>
+
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--cat-client)"></i>Client</span>
+    <span><i class="swatch" style="background:var(--cat-transport)"></i>Transport / API</span>
+    <span><i class="swatch" style="background:var(--cat-security)"></i>Security &amp; policy-as-code</span>
+    <span><i class="swatch" style="background:var(--cat-orchestration)"></i>Orchestration</span>
+    <span><i class="swatch" style="background:var(--cat-composer)"></i>Composer (not an agent)</span>
+    <span><i class="swatch" style="background:var(--cat-agent)"></i>Agent</span>
+    <span><i class="swatch" style="background:var(--cat-gateway)"></i>Model gateway</span>
+    <span><i class="swatch" style="background:var(--cat-sqlite)"></i>SQLite</span>
+    <span><i class="swatch" style="background:var(--cat-redis)"></i>Redis</span>
+    <span><i class="swatch" style="background:var(--cat-vector)"></i>Vector store</span>
+    <span><i class="swatch" style="background:var(--cat-external); border:1px dashed var(--cat-external)"></i>External</span>
+  </div>
+
+  <div class="diagram">
+    <div class="arch-wrap" id="archWrap">
+      <svg class="connectors" id="connectors"></svg>
+
+      <div class="band" id="band-clients">
+        <div class="band-label">Clients</div>
+        <div class="node cat-client" data-id="1"><span class="badge">1</span><div class="node-title">Streamlit Client</div><div class="node-sub">:8501 · storefront UI</div></div>
+        <div class="node cat-client" data-id="2"><span class="badge">2</span><div class="node-title">MCP Clients</div><div class="node-sub">Claude Desktop/Code, etc.</div></div>
+      </div>
+
+      <div class="band" id="band-transport">
+        <div class="band-label">Transport / API</div>
+        <div class="node cat-transport" data-id="3"><span class="badge">3</span><div class="node-title">Agent Mesh Service</div><div class="node-sub">FastAPI, :8000</div></div>
+        <div class="node cat-transport" data-id="4"><span class="badge">4</span><div class="node-title">MCP Server</div><div class="node-sub">HTTP/SSE :8765 + in-process · 13 tools</div></div>
+        <div class="node cat-transport new" data-id="5"><span class="badge">5</span><div class="node-title">MCP Client</div><div class="node-sub">mcp_client.py · internal dispatch</div></div>
+      </div>
+
+      <div class="band cross" id="band-security">
+        <div class="band-label">Security &amp; policy-as-code (cross-cutting)</div>
+        <div class="node cat-security" data-id="6"><span class="badge">6</span><div class="node-title">Policy Engine</div><div class="node-sub">policy.py · default-deny</div></div>
+        <div class="node cat-security" data-id="7"><span class="badge">7</span><div class="node-title">Agent Runtime</div><div class="node-sub">runtime.py · invoke_tool()</div></div>
+        <div class="node cat-security" data-id="8"><span class="badge">8</span><div class="node-title">Audit Log</div><div class="node-sub">audit_log table</div></div>
+      </div>
+
+      <div class="band" id="band-orchestration">
+        <div class="band-label">Orchestration</div>
+        <div class="node cat-orchestration" data-id="9"><span class="badge">9</span><div class="node-title">Lead Orchestrator</div><div class="node-sub">orchestrator.py · async</div></div>
+        <div class="node cat-composer" data-id="10"><span class="badge">10</span><div class="node-title">ResponseComposer</div><div class="node-sub">response_composer.py</div></div>
+        <div class="node cat-sqlite" data-id="11"><span class="badge">11</span><div class="node-title">Session Store</div><div class="node-sub">session_store.py</div></div>
+      </div>
+
+      <div class="band" id="band-agents">
+        <div class="band-label">Agents (UC1–UC5) + human review</div>
+        <div class="node cat-agent" data-id="12"><span class="badge">12</span><div class="node-title">PERSONA</div><div class="node-sub">UC1 · segment</div></div>
+        <div class="node cat-agent" data-id="13"><span class="badge">13</span><div class="node-title">MUSE</div><div class="node-sub">UC2 · discovery</div></div>
+        <div class="node cat-agent" data-id="14"><span class="badge">14</span><div class="node-title">TAILOR</div><div class="node-sub">UC3 · fit</div></div>
+        <div class="node cat-agent" data-id="15"><span class="badge">15</span><div class="node-title">CARE</div><div class="node-sub">UC4 · contact</div></div>
+        <div class="node cat-agent" data-id="16"><span class="badge">16</span><div class="node-title">SENTRY</div><div class="node-sub">UC4 · risk</div></div>
+        <div class="node cat-agent" data-id="17"><span class="badge">17</span><div class="node-title">CONCIERGE</div><div class="node-sub">UC4 · upsell</div></div>
+        <div class="node cat-agent" data-id="18"><span class="badge">18</span><div class="node-title">TALLY</div><div class="node-sub">UC5 · loyalty</div></div>
+        <div class="node cat-security" data-id="19"><span class="badge">19</span><div class="node-title">Human Review Queue</div><div class="node-sub">human_review.py</div></div>
+      </div>
+
+      <div class="band" id="band-gateway">
+        <div class="band-label">Model gateway</div>
+        <div class="node cat-gateway" data-id="20"><span class="badge">20</span><div class="node-title">Model Gateway</div><div class="node-sub">gateway.py · reasoning/fast/vision</div></div>
+      </div>
+
+      <div class="band" id="band-data">
+        <div class="band-label">Data &amp; storage</div>
+        <div class="node cat-sqlite" data-id="21"><span class="badge">21</span><div class="node-title">SQLite — Data Universe</div><div class="node-sub">schema.sql · 9 tables</div></div>
+        <div class="node cat-redis" data-id="22"><span class="badge">22</span><div class="node-title">Redis</div><div class="node-sub">session memory, optional</div></div>
+        <div class="node cat-vector" data-id="23"><span class="badge">23</span><div class="node-title">Vector Store</div><div class="node-sub">Chroma · vector_store.py</div></div>
+      </div>
+
+      <div class="band external" id="band-external">
+        <div class="band-label">External</div>
+        <div class="node cat-external" data-id="24"><span class="badge">24</span><div class="node-title">External Model Providers</div><div class="node-sub">OpenRouter · Anthropic</div></div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    Companion to docs/fig-02-as-built.html and docs/fig-current-sequence.html (the sequence-level view of the same system — its entry-point arrows now note "via MCP" where this diagram's transport detail applies). Every box's explanation cites the real file — nothing here is aspirational.
+  </footer>
+
+</div>
+
+<div id="backdrop"></div>
+<div id="detailPanel">
+  <button id="detailClose">✕</button>
+  <span class="detail-tag" id="detailTag"></span>
+  <div class="detail-num" id="detailNum"></div>
+  <h2 id="detailTitle"></h2>
+  <div id="detailBody"></div>
+  <div class="detail-nav">
+    <button id="prevBtn">← Prev</button>
+    <button id="nextBtn">Next →</button>
+  </div>
+</div>
+
+<script>
+const COMPONENTS = {
+  1: { tag: "Client", cat: "client", title: "Streamlit Client", body: `
+    <p><code>streamlit_app.py</code>, port <code>:8501</code>. A storefront, not a chat transcript — search bar, product grid, detail pages (🛍️ Shop tab), a 🛡️ Human Review tab (approve/deny escalations), a 📊 Admin tab (business outcomes, audit trail, the vector-search panel).</p>
+    <p>Talks to the Agent Mesh Service (3) over exactly one HTTP contract, <code>POST /chat</code> — it never imports an agent module directly. That's what makes the client swappable (CLI, mobile app, a different UI) with zero backend changes.</p>` },
+  2: { tag: "Client", cat: "client", title: "MCP Clients", body: `
+    <p>Any MCP-speaking client — Claude Desktop, Claude Code, or a custom agent — connecting over HTTP/SSE to the MCP Server (4).</p>
+    <p>Not part of this codebase; drawn here because it's a real, second entry point into the same policy-checked runtime (7) that <em>internal</em> calls now use too, via MCP Client (5) — reachable without going through the Orchestrator (9) at all.</p>` },
+  3: { tag: "Transport", cat: "transport", title: "Agent Mesh Service", body: `
+    <p><code>neutail/api.py</code>, FastAPI, port <code>:8000</code>. The one HTTP surface for the whole system: <code>POST /chat</code> (the demo client's single call — routes through the Orchestrator (9)), <code>POST /tools/{name}/invoke</code> (a pass-through to MCP Client (5) — the same agent-mesh chokepoint every internal caller uses now, reachable over HTTP for testing), plus <code>/admin/outcomes</code>, <code>/admin/vector_search</code>, <code>/escalations</code>, <code>/audit</code>, <code>/customers/{id}/loyalty</code>.</p>
+    <p>A FastAPI <code>lifespan</code> hook opens MCP Client (5)'s in-process session once at startup and closes it at shutdown. Every route that reaches the agent mesh is <code>async def</code> now, awaiting that dispatch instead of calling Agent Runtime (7) directly — the routes that never touch the mesh (<code>/audit</code>, <code>/catalogue/{sku}</code>, the <code>/admin/*</code> pair) stayed plain <code>def</code>, nothing to await.</p>
+    <p><strong>Known gap, unchanged by any of this:</strong> no auth — <code>caller</code> in <code>/tools/{name}/invoke</code> is self-declared by whoever calls it. Fine for a demo where the runtime is the trust boundary; not fine if this endpoint (or MCP Server (4)'s <code>:8765</code>) were ever reachable by an untrusted client.</p>` },
+  4: { tag: "Transport", cat: "transport", title: "MCP Server", body: `
+    <p><code>neutail/mcp_server.py</code>. The canonical dispatch surface now, not just an external integration — exposes <strong>13</strong> tools (was 7): all 9 policy-checked contracts (<code>get_customer_segment</code>, <code>get_fit_profile</code>, <code>get_loyalty_status</code>, <code>earn_points</code>, <code>resolve_contact</code>, <code>check_payment_policy</code>, <code>rank_products</code>, <code>commit_subscription</code>, <code>commit_order</code>) plus the 4 read-only reporting queries from before (<code>search_products</code>, <code>get_catalogue_item</code>, <code>get_audit_log</code>, <code>get_business_outcomes</code>).</p>
+    <p>One tool registry, two transports: standalone over HTTP/SSE on <code>:8765</code> (<code>python -m neutail.mcp_server</code> — unchanged command) for external clients (2), via the <code>mcp</code> SDK's <code>FastMCP</code> (pinned <code>&lt;2</code>); imported in-process by MCP Client (5) for every internal call. Same source, same tool implementations, same policy rules — two separate live instances by necessity of process isolation, not one shared object across processes.</p>
+    <p>Each policy-checked tool is now <code>async def</code>, running the (unchanged, synchronous) dispatch chain via <code>asyncio.to_thread(...)</code>: a live model call inside a handler can take 15-20s, and this server's event loop is shared with the FastAPI process when reached internally, so a blocking call there would freeze every other concurrent request, not just this one.</p>
+    <p>Exception remapping: catches <code>PolicyDenied</code>/<code>LookupError</code>/<code>ValueError</code> and returns a structured <code>CallToolResult</code> (<code>structuredContent = {"error_type", "reason"}</code>) instead of letting FastMCP's default handling collapse them into an untyped string — MCP Client (5) reconstructs the real exception from it, so <code>api.py</code>'s existing 403/404/400 mapping needed zero changes.</p>
+    <p>Default caller <code>"mcp_client"</code> stays allow-listed on exactly the same 3 tools as before unification — the 6 newly-exposed ones are unreachable externally unless a caller explicitly self-declares a privileged identity. Not a new gap: <code>/tools/{name}/invoke</code> (3) always accepted a self-declared caller with zero auth.</p>` },
+  5: { tag: "Transport — new", cat: "transport", title: "MCP Client", body: `
+    <p><code>neutail/mcp_client.py</code> — new. The internal dispatch path every agent's <code>run()</code> entry point and the Orchestrator (9) use to reach MCP Server (4): <code>init()</code> / <code>shutdown()</code> / <code>call_tool(caller, tool, **kwargs)</code>.</p>
+    <p>Real MCP protocol, not a simulation of one — the <code>mcp</code> SDK's <code>create_connected_server_and_client_session()</code> connects a genuine <code>ClientSession</code> to the FastMCP server object via in-process <code>anyio</code> memory streams. Real JSON-RPC-shaped messages, real (de)serialization, zero sockets, zero subprocess — this is what makes "internal dispatch is literally MCP" true without needing a second OS process running just for the demo to work at all.</p>
+    <p>Explicit <code>init()</code>/<code>shutdown()</code>, not a lazy singleton like Session Store (11) or Vector Store (23)'s pattern: the session's lifetime wraps a background task group, needing a controlled enter/exit tied to the process's lifespan (a FastAPI <code>lifespan</code> hook; <code>run_demo.py</code>'s own start/end).</p>
+    <p><strong>Placement boundary, decided before writing any code:</strong> only the top-level entry point each agent exposes crosses this boundary. A call a handler makes to <em>another</em> tool while it's already executing — MUSE (13) calling TAILOR (14) inside its evaluator loop, CONCIERGE (17) calling CARE (15)/SENTRY (16)/TALLY (18) inside a commit — stays a direct, synchronous Agent Runtime (7) call, exactly as before this module existed. Routing an already-server-side call back out through another MCP hop would be circular, for no benefit, and would have forced those handlers to be async while Agent Runtime (7)/Policy Engine (6) stay deliberately synchronous.</p>
+    <p>Safe for many concurrent coroutines sharing one event loop — exactly what concurrent Agent Mesh Service (3) requests are. Not safe across OS threads or a second event loop: never called from inside <code>asyncio.to_thread</code>.</p>` },
+  6: { tag: "Security", cat: "security", title: "Policy Engine", body: `
+    <p><code>neutail/policy.py</code>. An embedded rule evaluator, default-deny: <code>check_tool_access(caller, tool)</code> raises <code>PolicyDenied</code> unless <code>caller</code> is on that tool's <code>allowed_callers</code> list — declared once, at registration, in <code>contracts.py</code>.</p>
+    <p>No OPA/Rego — the architecture doc's own tech-stack table pre-authorized "an embedded YAML rule evaluator if time-boxed," and this is that. Untouched by the MCP unification — still called exactly one way, from inside Agent Runtime (7), regardless of whether the call that reached it arrived via MCP Server (4) or a direct cross-agent call.</p>` },
+  7: { tag: "Security", cat: "security", title: "Agent Runtime", body: `
+    <p><code>neutail/runtime.py</code> — the one chokepoint, unchanged code since before MCP Server (4)/MCP Client (5) existed. <code>invoke_tool(caller, tool, **kwargs)</code> checks policy (6) first, calls the tool's registered handler, and unconditionally writes an audit_log (8) row — on success <em>or</em> denial.</p>
+    <p>Reached from exactly two shapes of call now: MCP Server (4)'s tool wrappers, for every top-level agent call arriving via MCP Client (5) or an external MCP client (2); and directly, synchronously, from inside a handler that's already executing, for a cross-agent call it makes itself (MUSE→TAILOR, CONCIERGE→CARE/SENTRY/TALLY) — see MCP Client (5) for why that second shape deliberately isn't routed through MCP too. No agent can skip logging or the policy check without bypassing this function entirely, and nothing does, either way. Its own docstring calls this "MCP-style tool dispatch" — which is exactly what made MCP Server (4) mostly a transport exercise on top of unchanged logic, not a rewrite of this function.</p>` },
+  8: { tag: "Security", cat: "security", title: "Audit Log", body: `
+    <p>The <code>audit_log</code> table in SQLite (21). Append-only, written from three places: <code>runtime.invoke_tool()</code> (every tool call — caller, tool, allowed 0/1, a detail JSON blob), <code>gateway.call_model()</code> (every model call, live or fallback, under <code>tool = "model_gateway:&lt;tier&gt;"</code>), and <code>human_review.resolve_escalation()</code> (a human's approve/deny, through the same public logging hook).</p>
+    <p>Read via a plain <code>SELECT ... ORDER BY log_id DESC</code> (<code>GET /audit</code>) — no separate audit service, and nothing curates or summarizes it before you see it. Unaffected by the MCP unification: MCP Server (4)'s tool wrappers don't log anything themselves — the write still happens exactly once, inside Agent Runtime (7), same as always.</p>` },
+  9: { tag: "Orchestration", cat: "orchestration", title: "Lead Orchestrator", body: `
+    <p><code>neutail/orchestrator.py</code>. <code>handle_message()</code> is the one entry point for every customer message — fully <code>async def</code> now, since every specialist call inside it goes through MCP Client (5) rather than a direct Python call.</p>
+    <p><code>classify_intents()</code> (live fast-tier model via the Model Gateway (20) — reached through <code>asyncio.to_thread</code>, since gateway.py stays fully synchronous by design; keyword matcher as fallback) returns a <em>list</em> of <code>(intent, confidence)</code> pairs — almost always one, occasionally two for a compound message ("show me something for date night, <em>and</em> check my fit for jeans"). Below <code>CONFIDENCE_THRESHOLD</code>, or the primary intent is <code>"unknown"</code>, it returns a clarifying question instead of routing blind.</p>
+    <p>One qualifying intent → the matching <code>_handle_discovery</code>/<code>_handle_fit</code>/<code>_handle_service</code> runs directly, same shape as before multi-intent existed, just awaited now. Two or more → each runs independently, sequentially <code>await</code>ed rather than <code>asyncio.gather</code>ed — the fit handler's category resolution depends on the discovery handler's session-memory write finishing first — then ResponseComposer (10) merges them.</p>` },
+  10: { tag: "Composer — not an agent", cat: "composer", title: "ResponseComposer", body: `
+    <p><code>neutail/response_composer.py</code>. Merges 2+ independent per-intent results into one reply, only when a message classifies as more than one qualifying intent.</p>
+    <p>Deliberately <strong>not</strong> an agent — no tool contract, no policy check, no audit-log row of its own, the same reasoning that keeps the Model Gateway (20), Session Store (11), Vector Store (23), and now MCP Client (5) as plain modules rather than policy-gated tools: none of them are themselves business logic worth gating.</p>
+    <p><strong>Placement, on purpose — the same principle MCP Client (5) was built around:</strong> PERSONA/MUSE/TAILOR still reply to the Orchestrator (9) directly, exactly as for a single-intent message — nothing here receives an agent's result before the Orchestrator does. The Orchestrator alone collects every qualifying handler's result, then makes one call out to <code>compose()</code> and back.</p>` },
+  11: { tag: "Orchestration", cat: "sqlite", title: "Session Store", body: `
+    <p><code>neutail/session_store.py</code> — short-term memory only (§07's session tier): <code>segment</code>, <code>last_results</code>, <code>last_category_by_sku</code>, keyed by <code>session_id</code>. This is what makes "the second one, in my size" resolve without restating anything.</p>
+    <p>Same live/fallback shape as everything else in this codebase: Redis (22) with a 30-minute TTL when reachable — checked once via <code>ping()</code> and cached for the process's lifetime — else the <code>session_context</code> table in SQLite (21), with zero code-path changes either way. Stays fully synchronous; the Orchestrator (9) reaches it via <code>asyncio.to_thread</code> now that it's <code>async def</code>, same reasoning as Model Gateway (20).</p>
+    <p>Durable personalization never lives here — that's the tables in (21), read live on every call, so a Redis restart can't erase a customer's actual history.</p>` },
+  12: { tag: "Agent · UC1", cat: "agent", title: "PERSONA", body: `
+    <p><code>neutail/agents/persona.py</code>. Provides <code>get_customer_segment</code> — resolves <em>affluent</em>/<em>value</em> live from CRM tenure + loyalty tier + behavioural history, on every call.</p>
+    <p>Segment is never stored — it can't go stale, and a tier change or a fresh search shows up on the very next call with no cache to invalidate. <code>run()</code> is <code>async def</code> now, dispatching via MCP Client (5) instead of calling Agent Runtime (7) directly — the handler itself, <code>_get_customer_segment</code>, is untouched.</p>` },
+  13: { tag: "Agent · UC2", cat: "agent", title: "MUSE", body: `
+    <p><code>neutail/agents/muse.py</code>. Provides <code>rank_products</code> — the most-instrumented agent in the system.</p>
+    <ul>
+      <li>Candidate retrieval is real vector search (23) — <code>vector_store.semantic_search()</code> — not the 3-phrase keyword matcher this used to be.</li>
+      <li>Runs the evaluator loop against TAILOR (14) once per distinct candidate category (deduped, not per-SKU) before ranking anything — still a direct, synchronous Agent Runtime (7) call, unchanged by the MCP unification (see MCP Client (5) for why).</li>
+      <li>Applies a diversity cap (max 2 items/category) and a prompt prefilter (60 candidates, 12/category) before any live-model prompt is even built.</li>
+      <li>Ranks via the Model Gateway's (20) reasoning tier (still a plain synchronous call — <code>_rank_products</code> is a handler, executing server-side once dispatched, so it can't be <code>async def</code> either), or a deterministic fallback that scores every candidate the same way.</li>
+    </ul>
+    <p><code>run()</code> — the entry point the Orchestrator (9) calls — is <code>async def</code> now, going through MCP Client (5). Everything listed above is what happens once MCP Server (4) has already dispatched into the handler; none of it changed.</p>` },
+  14: { tag: "Agent · UC3", cat: "agent", title: "TAILOR", body: `
+    <p><code>neutail/agents/tailor.py</code>. Provides <code>get_fit_profile</code> — a customer's size/fit guidance and return-risk for a category.</p>
+    <p>Guided risk (12%) comes from seeded fit history; with none, a population baseline computed <em>live</em> per category from actual seeded orders/returns — not a hardcoded constant. Also the exact tool MUSE (13) calls directly for its evaluator loop (the architecture doc's dashed MUSE→TAILOR edge, made real) — that call stays a direct Agent Runtime (7) call either way, since TAILOR's handler doesn't care whether it was reached via MCP or not.</p>` },
+  15: { tag: "Agent · UC4", cat: "agent", title: "CARE", body: `
+    <p><code>neutail/agents/care.py</code>. Provides <code>resolve_contact</code> — masks PII, flags upsell eligibility by loyalty tier. Hosts CONCIERGE's (17) calls: nothing reaches CONCIERGE without going through CARE first.</p>` },
+  16: { tag: "Agent · UC4", cat: "agent", title: "SENTRY", body: `
+    <p><code>neutail/agents/sentry.py</code>. Provides <code>check_payment_policy</code> — approves inside policy bounds (separate dollar thresholds for subscriptions vs. one-time orders, plus a first-time-payer check that applies to both), else writes a <code>pending</code> row to <code>escalations</code>.</p>
+    <p>No special escalation wire — it writes through the exact same tool path any other agent uses. Human-in-the-loop (19) is a consequence of that row existing, not a separate mechanism.</p>` },
+  17: { tag: "Agent · UC4", cat: "agent", title: "CONCIERGE", body: `
+    <p><code>neutail/agents/concierge.py</code>. Provides <code>commit_subscription</code> and <code>commit_order</code> — requires CARE (15) + SENTRY (16) + TALLY (18). Commits immediately on approval; reports "pending human review" on escalation rather than treating it as a denial — the pause is temporary, not a rejection.</p>
+    <p><code>run()</code>/<code>run_order()</code> are <code>async def</code> now, via MCP Client (5); the handler's own calls to CARE/SENTRY/TALLY inside a commit stay direct, synchronous Agent Runtime (7) calls — same reasoning as MUSE (13)'s evaluator loop.</p>` },
+  18: { tag: "Agent · UC5", cat: "agent", title: "TALLY", body: `
+    <p><code>neutail/agents/tally.py</code>. Provides <code>get_loyalty_status</code> and <code>earn_points</code> — brought in from out-of-scope once there was a UI to show it on.</p>
+    <p>Points = amount × tier multiplier (Bronze 1× → Platinum 2×). Tier itself is deliberately <em>never</em> recomputed from points — doing so would create a silent feedback loop into PERSONA's (12) segmentation and CARE's (15) upsell gate mid-session.</p>` },
+  19: { tag: "Governance", cat: "security", title: "Human Review Queue", body: `
+    <p><code>neutail/human_review.py</code>. Lists pending rows in <code>escalations</code> (written by SENTRY, 16); resolves approve/deny.</p>
+    <p>Approving a subscription <em>or</em> order escalation completes the exact commit SENTRY paused and fires <code>earn_points</code> (18) at that moment, not when it was first requested. <code>resolve_escalation()</code> is <code>async def</code> now — its own sqlite reads/writes moved behind <code>asyncio.to_thread</code>, and it <code>await</code>s TALLY's <code>run()</code> (18), which is the one place this file was found to transitively reach the agent mesh during this refactor (it doesn't call Agent Runtime (7) directly, easy to miss on a first pass). Every resolution still logs through the same <code>runtime.log_event()</code> hook as a tool call, so a human's decision shows up in the audit trail (8) exactly like an agent's.</p>` },
+  20: { tag: "Model routing", cat: "gateway", title: "Model Gateway", body: `
+    <p><code>neutail/gateway.py</code>. Routes by tier — reasoning (MUSE, CONCIERGE), fast (intent classification), vision (not used in this build) — trying OpenRouter first, then direct Anthropic, then the caller's own deterministic fallback.</p>
+    <p>That three-way fallback is why the whole system runs on seeded data alone with <em>neither</em> API key set — nothing blocks on a live model being reachable. Every attempt's real failure (bad model slug, rate limit, truncated response) is logged to (8), never silently swallowed.</p>
+    <p><strong>Stays fully synchronous, on purpose</strong> — a real design correction made mid-refactor. It's called from both the Orchestrator (9, now async, reaching it via <code>asyncio.to_thread</code>) <em>and</em> from inside synchronous handlers (MUSE (13)'s <code>_rank_products</code>, CONCIERGE (17)'s <code>_commit_subscription</code>) that can't become <code>async def</code> themselves — see MCP Client (5)'s placement boundary for why. Converting this module to <code>async</code>/<code>httpx</code> would have broken the second set of callers; leaving it synchronous and threading the one new async caller works for both.</p>` },
+  21: { tag: "Storage", cat: "sqlite", title: "SQLite — Data Universe", body: `
+    <p><code>neutail/schema.sql</code>. The embedded, durable store: <code>customers</code>, <code>loyalty</code>, <code>catalogue</code>, <code>inventory</code>, <code>transactional</code>, <code>returns</code>, <code>fit_profile</code>, <code>behavioural</code>, <code>escalations</code> — plus <code>session_context</code> (SQLite's fallback for short-term memory, 11) and <code>audit_log</code> (8).</p>
+    <p>One seeded file (<code>data/neutail.db</code>, via <code>python -m neutail.seed</code>) — no external service required to run the entire demo end to end. Plain <code>sqlite3</code> throughout, deliberately not rewritten to an async driver — see Model Gateway (20) for the same reasoning applied here.</p>` },
+  22: { tag: "Storage", cat: "redis", title: "Redis", body: `
+    <p>Optional backend for the Session Store (11). Availability is checked once per process (<code>ping()</code>) and cached for its lifetime — start Redis <em>before</em> the API, or restart the API to notice it coming up later.</p>
+    <p>30-minute TTL on every session key. If it's not reachable, or goes down mid-run, every read/write falls back to the SQLite table (21) with zero code-path changes — verified both ways: identical results with Redis up (<code>redis-cli keys "session:*"</code> shows the TTL) and stopped.</p>` },
+  23: { tag: "Storage", cat: "vector", title: "Vector Store", body: `
+    <p><code>neutail/vector_store.py</code>. Real embedding-based nearest-neighbor search over the catalogue for MUSE's (13) candidate retrieval — replaces what used to be a 3-phrase hardcoded keyword matcher that handed back the entire 1,300-SKU catalogue for anything else.</p>
+    <p><strong>Live:</strong> Chroma, an embedded vector database persisted to <code>data/chroma/</code>, embedding via its own bundled local ONNX MiniLM model — no API key, no external service (a one-time ~80MB download, cached after that). <strong>Fallback:</strong> a plain token-overlap index if <code>chromadb</code> isn't installed.</p>
+    <p>Every search logs an audit_log (8) row under <code>tool = "vector_store:search"</code>, same transparency as a model-gateway call.</p>` },
+  24: { tag: "External", cat: "external", title: "External Model Providers", body: `
+    <p>OpenRouter and Anthropic — reached only through the Model Gateway (20), never called directly by an agent.</p>
+    <p>That indirection is the point: swapping providers, or adding a new one, is a config change (an environment variable) rather than agent rework. Confirmed the hard way — getting a <em>working</em> key took three sequential real account issues to resolve (workspace scoping, then credit balance, then a provider switch), none of which required touching an agent.</p>` },
+};
+
+const ORDER = Object.keys(COMPONENTS).map(Number).sort((a,b)=>a-b);
+
+const CONNECTORS = [
+  [1,3,"solid"], [2,4,"solid"],
+  [3,9,"solid"], [3,5,"dashed"],
+  [9,5,"solid"], [5,4,"solid"],
+  [4,7,"solid"], [7,6,"thin"], [7,8,"thin"],
+  [9,10,"dashed"], [9,11,"solid"],
+  [11,22,"solid"], [11,21,"dashed"],
+  [7,12,"thin"], [7,13,"thin"], [7,14,"thin"], [7,15,"thin"], [7,16,"thin"], [7,17,"thin"], [7,18,"thin"], [7,19,"thin"],
+  [9,20,"solid"], [13,20,"solid"], [17,20,"thin"],
+  [20,24,"solid"],
+  [13,23,"solid"],
+  [17,18,"thin"],
+];
+
+const wrap = document.getElementById('archWrap');
+const svg = document.getElementById('connectors');
+
+function edgePoint(rect, wrapRect, towardRect){
+  const cx = rect.left + rect.width/2 - wrapRect.left;
+  const cy = rect.top + rect.height/2 - wrapRect.top;
+  const tcx = towardRect.left + towardRect.width/2 - wrapRect.left;
+  const tcy = towardRect.top + towardRect.height/2 - wrapRect.top;
+  if (Math.abs(tcy - cy) > Math.abs(tcx - cx)) {
+    // vertical relationship dominates -> exit top or bottom
+    const y = tcy > cy ? rect.bottom - wrapRect.top : rect.top - wrapRect.top;
+    return [cx, y];
+  } else {
+    const x = tcx > cx ? rect.right - wrapRect.left : rect.left - wrapRect.left;
+    return [x, cy];
+  }
+}
+
+function drawConnectors(){
+  svg.innerHTML = `<defs>
+    <marker id="arrowHead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#9AA39C"/>
+    </marker>
+  </defs>`;
+  const wrapRect = wrap.getBoundingClientRect();
+  wrap.style.setProperty('height', wrap.scrollHeight + 'px');
+  CONNECTORS.forEach(([fromId, toId, style]) => {
+    const fromEl = document.querySelector(`.node[data-id="${fromId}"]`);
+    const toEl = document.querySelector(`.node[data-id="${toId}"]`);
+    if (!fromEl || !toEl) return;
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const [x1,y1] = edgePoint(fromRect, wrapRect, toRect);
+    const [x2,y2] = edgePoint(toRect, wrapRect, fromRect);
+    const midY = (y1+y2)/2;
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d", `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke", style === "thin" ? "#C9CFC3" : "#9AA39C");
+    path.setAttribute("stroke-width", style === "thin" ? "1" : "1.4");
+    if (style === "dashed") path.setAttribute("stroke-dasharray","4 3");
+    path.setAttribute("marker-end","url(#arrowHead)");
+    svg.appendChild(path);
+  });
+}
+
+let currentId = null;
+
+function focusNode(id){
+  id = Number(id);
+  currentId = id;
+  document.querySelectorAll('.node').forEach(n => {
+    const nid = Number(n.dataset.id);
+    n.classList.toggle('focused', nid === id);
+    n.classList.toggle('dimmed', nid !== id);
+  });
+  const c = COMPONENTS[id];
+  document.getElementById('detailTag').textContent = c.tag;
+  document.getElementById('detailTag').style.background = `var(--cat-${c.cat}-fill)`;
+  document.getElementById('detailTag').style.color = `var(--cat-${c.cat})`;
+  document.getElementById('detailNum').textContent = `Component ${id} of ${ORDER.length}`;
+  document.getElementById('detailTitle').textContent = c.title;
+  document.getElementById('detailBody').innerHTML = c.body;
+  document.getElementById('backdrop').classList.add('open');
+  document.getElementById('detailPanel').classList.add('open');
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (el) el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'});
+}
+
+function unfocus(){
+  currentId = null;
+  document.querySelectorAll('.node').forEach(n => { n.classList.remove('focused'); n.classList.remove('dimmed'); });
+  document.getElementById('backdrop').classList.remove('open');
+  document.getElementById('detailPanel').classList.remove('open');
+}
+
+document.querySelectorAll('.node').forEach(n => {
+  n.addEventListener('click', () => focusNode(n.dataset.id));
+});
+document.getElementById('backdrop').addEventListener('click', unfocus);
+document.getElementById('detailClose').addEventListener('click', unfocus);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') unfocus(); });
+document.getElementById('prevBtn').addEventListener('click', () => {
+  const i = ORDER.indexOf(currentId);
+  focusNode(ORDER[(i - 1 + ORDER.length) % ORDER.length]);
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  const i = ORDER.indexOf(currentId);
+  focusNode(ORDER[(i + 1) % ORDER.length]);
+});
+
+window.addEventListener('resize', () => { drawConnectors(); });
+window.addEventListener('load', () => { drawConnectors(); });
+drawConnectors();
+</script>
+</body>
+</html>

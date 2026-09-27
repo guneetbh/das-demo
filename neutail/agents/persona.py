@@ -5,7 +5,7 @@ Segment is never stored — it's derived on every call, per the demo
 script's "PERSONA resolves ... live" (§06 step 2).
 """
 
-from neutail import contracts, runtime
+from neutail import contracts, mcp_client
 from neutail.db import get_connection
 
 AGENT_NAME = "persona_agent"
@@ -50,6 +50,8 @@ contracts.register(
 )
 
 
-def run(customer_id: str) -> dict:
-    """PERSONA's entry point — the Orchestrator calls this (Fig. 02, step 2)."""
-    return runtime.invoke_tool(AGENT_NAME, "get_customer_segment", customer_id=customer_id)
+async def run(customer_id: str) -> dict:
+    """PERSONA's entry point — the Orchestrator calls this (Fig. 02, step 2).
+    Dispatches via mcp_client (real MCP, in-process) rather than calling
+    runtime.invoke_tool() directly — see neutail/mcp_client.py."""
+    return await mcp_client.call_tool(AGENT_NAME, "get_customer_segment", customer_id=customer_id)

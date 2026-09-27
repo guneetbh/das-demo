@@ -15,6 +15,15 @@ blueprint this one was cut down from. Those references are reproduced
 below as "Mission #3 ref" for completeness; they aren't independently
 checked here, since Mission #3's diagrams aren't part of this repo.
 
+**For the static component view rather than a request-by-request trace,
+see [`docs/architecture-interactive.html`](docs/architecture-interactive.html)**
+— all 23 components (clients, transport, the security/policy-as-code
+plane, orchestration, all seven agents, the model gateway, and all three
+stores: SQLite, Redis, the vector store), each clickable for a zoomed-in
+explanation citing the real file. Complements the two sequence diagrams
+below, which trace one request through time rather than showing the
+pieces at rest.
+
 **A redrawn Fig. 02 is in [`docs/fig-02-as-built.html`](docs/fig-02-as-built.html)** —
 open it in a browser: the original diagram reproduced unchanged, plus a
 second figure showing only the deltas (session store, real MUSE→TAILOR
@@ -23,17 +32,22 @@ the same visual language as the blueprint.
 
 **A separate, current-state diagram is in
 [`docs/fig-current-sequence.html`](docs/fig-current-sequence.html)** —
-not a blueprint reproduction, a single up-to-date trace of one session
-as the code runs it today (vector-search-backed MUSE retrieval, the real
-per-category TAILOR evaluator loop, TALLY point accrual, human-in-the-
-loop). It also draws one thing that doesn't exist: a greyed-out,
-dashed **RESPONSECOMPOSER** lifeline, for the still-hypothetical case
-where `orchestrator.classify_intent()` returns more than one intent per
-message and something has to merge independent agents' answers into one
-reply. Today it never does — `classify_intent()` is single-label and
-`handle_message()` is a plain `if`/`elif`, so this box has no live path
-into it; it's there to show where that piece would go if multi-intent
-requests are ever built.
+not a blueprint reproduction, a single up-to-date trace of the complete
+solution as the code runs it today: one continuous single-intent session
+(vector-search-backed MUSE retrieval, the real per-category TAILOR
+evaluator loop, TALLY point accrual, human-in-the-loop) followed by the
+multi-intent path — a compound message reusing those same PERSONA/MUSE/
+TAILOR calls independently, merged by **RESPONSECOMPOSER**
+(`response_composer.py`) into one reply. Both halves are solid, real,
+live-verified — nothing hypothetical or greyed out. This used to be two
+separate pages (a "current implementation" diagram with a greyed,
+planned ResponseComposer, and a second diagram once that was built) —
+merged into one once multi-intent existed, since the second half didn't
+need to repeat the first half's PERSONA/MUSE/TAILOR detail, only add what
+was genuinely new: the compose() call and a callout on the placement
+correction made *before* writing any code (results converge on the
+Orchestrator first, not on the composer directly). Full design in
+README.md's "Multi-intent classification and ResponseComposer".
 
 ---
 

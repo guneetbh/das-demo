@@ -2,19 +2,39 @@
 Agent Runtime. This is the :8000 container: Streamlit (or any HTTP
 client) talks to this, never to an agent module directly.
 
+Every route that reaches into the agent mesh (/chat, /tools/{name}/invoke,
+/customers/{id}/loyalty, /escalations/{id}/resolve) is async now and goes
+through mcp_client — real MCP, in-process — rather than calling
+runtime.invoke_tool() directly; the lifespan hook below opens that session
+once at startup and closes it at shutdown. Routes that never touch the
+orchestrator/agent chain (/audit, /catalogue/{sku}, /admin/*, GET
+/escalations) stay plain `def` — nothing async to await, FastAPI runs them
+in its default thread pool same as always.
+
 Run: uvicorn neutail.api:app --reload --port 8000
 """
 
+from contextlib import asynccontextmanager
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from neutail import admin, contracts, human_review, orchestrator, policy, runtime, session_store, vector_store
+from neutail import admin, contracts, human_review, mcp_client, orchestrator, policy, runtime, session_store, vector_store
 from neutail.agents import tally
 from neutail.db import get_connection
 
-app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await mcp_client.init()
+    try:
+        yield
+    finally:
+        await mcp_client.shutdown()
+
+
+app = FastAPI(title="Neu.Tail — Agent Mesh Service", version="0.1.0", lifespan=lifespan)
 
 
 class ChatRequest(BaseModel):
@@ -45,11 +65,14 @@ def list_tools() -> dict:
 
 
 @app.post("/tools/{tool_name}/invoke")
-def invoke_tool(tool_name: str, body: ToolInvokeRequest) -> dict:
-    """Generic pass-through to the Agent Runtime — the same chokepoint every
-    agent module calls internally, just reachable over HTTP for testing."""
+async def invoke_tool(tool_name: str, body: ToolInvokeRequest) -> dict:
+    """Generic pass-through to the agent mesh — now via mcp_client (real
+    MCP, in-process) rather than calling runtime.invoke_tool() directly;
+    same chokepoint every agent module goes through, just reachable over
+    HTTP for testing. mcp_server.py's tool wrappers reconstruct the same
+    3 exception types this always mapped to 403/404/400."""
     try:
-        return runtime.invoke_tool(body.caller, tool_name, **body.args)
+        return await mcp_client.call_tool(body.caller, tool_name, **body.args)
     except policy.PolicyDenied as denied:
         raise HTTPException(status_code=403, detail=str(denied))
     except LookupError as missing:
@@ -59,9 +82,9 @@ def invoke_tool(tool_name: str, body: ToolInvokeRequest) -> dict:
 
 
 @app.post("/chat")
-def chat(body: ChatRequest) -> dict:
+async def chat(body: ChatRequest) -> dict:
     """The demo client's one endpoint — the Orchestrator does the rest."""
-    return orchestrator.handle_message(body.session_id, body.customer_id, body.message)
+    return await orchestrator.handle_message(body.session_id, body.customer_id, body.message)
 
 
 @app.get("/audit")
@@ -85,11 +108,11 @@ def catalogue_item(sku: str) -> dict:
 
 
 @app.get("/customers/{customer_id}/loyalty")
-def loyalty_status(customer_id: str) -> dict:
+async def loyalty_status(customer_id: str) -> dict:
     """Read-only — does not award points. TALLY's earn_points only fires
     from a completed purchase (commit_subscription or an approved escalation)."""
     try:
-        return tally.status(customer_id)
+        return await tally.status(customer_id)
     except ValueError as not_found:
         raise HTTPException(status_code=404, detail=str(not_found))
 
@@ -131,8 +154,8 @@ def escalations(status: Optional[str] = "pending") -> dict:
 
 
 @app.post("/escalations/{escalation_id}/resolve")
-def resolve_escalation(escalation_id: int, body: ResolveEscalationRequest) -> dict:
+async def resolve_escalation(escalation_id: int, body: ResolveEscalationRequest) -> dict:
     try:
-        return human_review.resolve_escalation(escalation_id, body.approve, body.resolved_by)
+        return await human_review.resolve_escalation(escalation_id, body.approve, body.resolved_by)
     except ValueError as bad_request:
         raise HTTPException(status_code=400, detail=str(bad_request))
