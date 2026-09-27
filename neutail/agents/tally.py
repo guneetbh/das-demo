@@ -70,7 +70,7 @@ def _earn_points(customer_id: str, amount: float, source: str = "purchase") -> d
 
 contracts.register(
     "get_loyalty_status",
-    allowed_callers=["tally_agent", "lead_orchestrator", "persona_agent", "concierge_agent"],
+    allowed_callers=["tally_agent", "lead_orchestrator", "persona_agent", "concierge_agent", "mcp_client"],
     handler=_get_loyalty_status,
 )
 

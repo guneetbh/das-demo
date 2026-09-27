@@ -492,6 +492,26 @@ with admin_tab:
     st.title("Business Outcomes")
     st.caption("Computed from the seeded population (GET /admin/outcomes) — not asserted constants. §09")
 
+    st.subheader("🧭 Vector search (MUSE's candidate retrieval)")
+    st.caption(
+        "Real embedding-based nearest-neighbor search over the catalogue — Chroma, a local "
+        "ONNX model, no API key — not the three-hardcoded-phrase matcher this used to be. Every "
+        "search below (and every shop-tab search) logs a `vector_store:search` row to the audit "
+        "trail, same as a model-gateway call."
+    )
+    col_vs_query, col_vs_k = st.columns([4, 1])
+    vs_query = col_vs_query.text_input("Query", value="something for date night", key="vs-query")
+    vs_top_k = col_vs_k.number_input("Top K", min_value=3, max_value=30, value=8, key="vs-top-k")
+    if st.button("🔍 Search the vector index", key="vs-search"):
+        st.session_state.vs_result = api_get("/admin/vector_search", query=vs_query, top_k=vs_top_k)
+    vs_result = st.session_state.get("vs_result")
+    if vs_result:
+        st.caption(f"query: `{vs_result['query']}` · backend: `{vs_result['backend']}`")
+        for r in vs_result["results"]:
+            st.text(f"{r['score']:.3f}  {r['name']:<28} {r['category']:<12} ${r['price']:.2f}  {r['sku']}")
+
+    st.divider()
+
     if st.button("Refresh outcomes", key="admin-refresh"):
         st.rerun()
 

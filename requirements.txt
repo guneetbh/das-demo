@@ -21,3 +21,16 @@ redis>=5.0
 # environment variables; you'd just need to `export` them yourself
 # instead of using a .env file.
 python-dotenv>=1.0
+
+# Optional — MUSE's candidate retrieval (vector_store.py) uses this as a
+# real embedded vector database when it's importable, persisted to
+# data/chroma/, embedding via its own bundled local ONNX model (no API
+# key, no external service — a ~80MB one-time download on first use,
+# cached under ~/.cache/chroma/ after that). Without it, semantic search
+# falls back to a plain token-overlap index over the same catalogue text.
+chromadb>=0.5
+
+# Optional — mcp_server.py exposes the database + vector store to any MCP
+# client (Claude Desktop, Claude Code, a custom agent) over HTTP/SSE.
+# Pinned <2: mcp 2.x renamed FastMCP to MCPServer with a different API.
+mcp[cli]>=1.6,<2

@@ -12,11 +12,16 @@ preference_tags. That's what makes "recommendations reflect today's
 search" survive a session (or a Redis restart): the next call to
 _candidates() sees it via ENGAGEMENT_WINDOW_HOURS, same as any other
 returning-customer signal.
+
+Candidate retrieval itself is `vector_store.semantic_search()` — real
+embedding-based nearest-neighbor search over the catalogue (Chroma, local
+ONNX model, falling back to token overlap if chromadb isn't installed),
+not the three-hardcoded-phrase matcher this used to be. See vector_store.py.
 """
 
 import json
 
-from neutail import contracts, gateway, runtime
+from neutail import contracts, gateway, runtime, vector_store
 from neutail.agents import tailor  # noqa: F401 — import registers get_fit_profile
 from neutail.db import get_connection
 
@@ -25,29 +30,22 @@ ENGAGEMENT_WINDOW_HOURS = 24  # "today", approximated as a rolling window rather
 MAX_PER_CATEGORY = 2  # diversity cap on final results — see _apply_diversity_cap
 PROMPT_CANDIDATE_LIMIT = 60  # cap on what gets sent to a live model — see _prefilter_for_prompt
 PROMPT_MAX_PER_CATEGORY = 12  # roomier than MAX_PER_CATEGORY; this is pre-filtering, not final selection
+SEMANTIC_CANDIDATE_LIMIT = 300  # how many nearest neighbors vector_store hands back before any other filtering
 
 SYSTEM_PROMPT = (
     "You are MUSE, a product-ranking agent for an apparel retailer. Given a customer "
     "segment, a query, and a list of candidate SKUs (each with tier, price, trending flag, "
-    "return_risk from the fit-profile service, and recently_engaged — whether the customer "
-    "searched or browsed this category in the last 24h), rank up to return_count of the best "
-    "matches, best first — a wide, varied pool, not just the single best category. "
-    "Prefer 'premium' items for the affluent segment and 'private_label' for the value "
-    "segment. Give recently_engaged items a modest boost, all else equal — this is a "
-    "returning customer, not a cold start. Penalize high return_risk. Reply with ONLY a "
-    "JSON array, best first, of objects: {\"sku\": str, \"reason\": str (one short sentence)}."
+    "return_risk from the fit-profile service, recently_engaged — whether the customer "
+    "searched or browsed this category in the last 24h — and semantic_score, a 0-1 embedding-"
+    "similarity score from a vector search of the catalogue against this exact query), rank up "
+    "to return_count of the best matches, best first — a wide, varied pool, not just the single "
+    "best category. Weigh semantic_score as a genuine relevance signal, not decoration — it's "
+    "already query-specific. Prefer 'premium' items for the affluent segment and "
+    "'private_label' for the value segment. Give recently_engaged items a modest boost, all "
+    "else equal — this is a returning customer, not a cold start. Penalize high return_risk. "
+    "Reply with ONLY a JSON array, best first, of objects: {\"sku\": str, \"reason\": str (one "
+    "short sentence)}."
 )
-
-
-def _infer_occasion_tag(query: str) -> str | None:
-    q = query.lower()
-    if "date" in q and "night" in q:
-        return "date-night"
-    if "work" in q:
-        return "work"
-    if "gym" in q or "workout" in q:
-        return "gym"
-    return None
 
 
 def _in_stock(conn, sku: str) -> bool:
@@ -72,13 +70,18 @@ def _recently_engaged_categories(conn, customer_id: str) -> set[str]:
 
 
 def _candidates(customer_id: str, query: str) -> list[dict]:
-    tag = _infer_occasion_tag(query)
     conn = get_connection()
-    if tag:
+
+    hits = vector_store.semantic_search(query, top_k=SEMANTIC_CANDIDATE_LIMIT)
+    semantic_score_by_sku = {hit["sku"]: hit["score"] for hit in hits}
+    if semantic_score_by_sku:
+        placeholders = ",".join("?" * len(semantic_score_by_sku))
         rows = conn.execute(
-            "SELECT * FROM catalogue WHERE occasion_tags LIKE ?", (f"%{tag}%",)
+            f"SELECT * FROM catalogue WHERE sku IN ({placeholders})", tuple(semantic_score_by_sku)
         ).fetchall()
     else:
+        # Empty catalogue, or the vector store itself came back empty for some
+        # reason — fall back to a full scan rather than return zero candidates.
         rows = conn.execute("SELECT * FROM catalogue").fetchall()
 
     engaged_categories = _recently_engaged_categories(conn, customer_id)
@@ -111,6 +114,7 @@ def _candidates(customer_id: str, query: str) -> list[dict]:
                 "return_risk": fit["return_risk"],
                 "recently_engaged": row["category"] in engaged_categories,
                 "image_url": row["image_url"],
+                "semantic_score": semantic_score_by_sku.get(row["sku"], 0.0),
             }
         )
     conn.close()
@@ -141,12 +145,14 @@ def _fallback_rank(candidates: list[dict], segment: str) -> str:
     for c in candidates:
         score = (
             (2 if c["tier"] == preferred_tier else 0)
+            + (2 * c["semantic_score"])
             + (1.5 if c["recently_engaged"] else 0)
             + (1 if c["trending"] else 0)
             - c["return_risk"]
         )
         reason = (
             f"{c['tier']} pick for the {segment} segment"
+            + (", closely matches your search" if c["semantic_score"] >= 0.6 else "")
             + (", trending" if c["trending"] else "")
             + (", seen earlier today" if c["recently_engaged"] else "")
             + f"; return-risk {c['return_risk']:.0%}"

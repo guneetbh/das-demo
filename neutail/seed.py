@@ -22,6 +22,7 @@ Run directly: python -m neutail.seed
 import random
 from datetime import datetime, timedelta
 
+from neutail import vector_store
 from neutail.agents.tally import TIER_MULTIPLIER  # reuse — don't duplicate the points formula
 from neutail.agents.tailor import GUIDED_RETURN_RISK  # reuse — the seed generator and TAILOR agree on what "guided" means
 from neutail.db import get_connection, init_schema
@@ -376,6 +377,9 @@ def seed() -> None:
     print(f"Seeded {total_customers} customers, {total_skus} SKUs, {len(inventory_rows)} inventory rows, "
           f"{total_orders} orders over {MONTHS_OF_HISTORY} months.")
     print(f"Returns: {total_returns} (target rate {TARGET_RETURN_RATE:.0%}, achieved {achieved_rate:.1%})")
+
+    indexed = vector_store.build_index()
+    print(f"Vector index built ({vector_store.backend()} backend): {indexed} SKUs embedded.")
 
 
 if __name__ == "__main__":

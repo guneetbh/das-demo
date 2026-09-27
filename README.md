@@ -16,6 +16,7 @@ python3 run_demo.py                             # walks the §06 demo script end
 redis-server &                                  # optional — session memory uses it when reachable
 uvicorn neutail.api:app --reload --port 8000    # Agent Mesh Service, :8000
 streamlit run streamlit_app.py                  # Streamlit Client, :8501 — needs the API running first
+python3 -m neutail.mcp_server                   # optional — MCP layer over HTTP/SSE, :8765
 ```
 
 Set `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY` (OpenRouter is tried
@@ -39,6 +40,8 @@ to plain `sqlite3` if it's not there.
 | `neutail/runtime.py` | Agent Runtime — `invoke_tool()`, the one path every tool call takes; policy-checks and audit-logs every call |
 | `neutail/gateway.py` | Model Gateway — tries OpenRouter, then direct Anthropic, then the caller's deterministic fallback; logs the real exception on any failed live attempt instead of swallowing it |
 | `neutail/session_store.py` | Session memory (§07 short-term tier) — Redis with a TTL when reachable, else `session_context` in SQLite. Same live/fallback shape as the Model Gateway |
+| `neutail/vector_store.py` | Vector database for MUSE's candidate retrieval — Chroma (local ONNX embeddings, persisted to `data/chroma/`) when importable, else a token-overlap index. Same live/fallback shape again — see "Vector search" below |
+| `neutail/mcp_server.py` | MCP layer — the database + vector store over HTTP/SSE (`:8765`) for any MCP client. See "MCP layer" below |
 | `neutail/orchestrator.py` | Lead Orchestrator — intent routing (live fast-tier call, keyword fallback), the confidence-check self-loop, delegates memory reads/writes to `session_store` |
 | `neutail/human_review.py` | Human Review Queue's resolve path — list pending escalations, approve/deny; approving a subscription escalation completes the commit SENTRY paused |
 | `neutail/api.py` | Agent Mesh Service (Fig. 04) — the FastAPI app, :8000 |
@@ -52,7 +55,7 @@ to plain `sqlite3` if it's not there.
 | `tailor.py` | `get_fit_profile` | Reads returns + fit history; return-risk baseline is computed per-category from seeded orders/returns, not a hardcoded constant; also the tool MUSE calls for the evaluator loop |
 | `care.py` | `resolve_contact` | Masks PII; flags upsell eligibility by loyalty tier |
 | `sentry.py` | `check_payment_policy` | Approves inside policy bounds, else writes a `pending` row to `escalations` |
-| `muse.py` | `rank_products` | Ranks candidates by segment/tier match, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots; pre-filters to 60 candidates before ever building a live-model prompt |
+| `muse.py` | `rank_products` | Candidate retrieval is `vector_store.semantic_search()` (real embedding-based nearest-neighbor search, not keyword matching); ranks candidates by segment/tier match plus that semantic score, then re-ranks against TAILOR's return-risk before returning; logs every result to `behavioural` so later visits reflect it; caps same-category items at 2 in the final results so one large category can't swamp all slots; pre-filters to 60 candidates before ever building a live-model prompt |
 | `concierge.py` | `commit_subscription`, `commit_order` | Requires CARE + SENTRY + TALLY; commits on approval, reports "pending review" on escalation. `commit_order` is a plain product purchase — same policy/points chokepoints, no CARE step, its own SENTRY threshold (§04's Access & Policy table) since a one-time purchase isn't a recurring subscription |
 | `tally.py` | `get_loyalty_status`, `earn_points` | UC5, newly in scope. Points = amount × tier multiplier (Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×); tier itself isn't recomputed from points (see below) |
 
@@ -65,6 +68,7 @@ to plain `sqlite3` if it's not there.
 | `POST /tools/{name}/invoke` | `{caller, args}` → straight to `runtime.invoke_tool()` — a policy denial comes back as HTTP 403 with the reason, an unknown tool as 404 |
 | `GET /customers/{id}/loyalty` | Read-only tier/points/YTD-spend — never awards points itself |
 | `GET /audit?limit=` | Tail of `audit_log` |
+| `GET /admin/vector_search?query=&top_k=` | Direct look at `vector_store.semantic_search()` — the same call MUSE's candidate retrieval makes, minus the ranking layers on top |
 | `GET /escalations?status=` | Human Review Queue listing (defaults to `pending`) |
 | `POST /escalations/{id}/resolve` | `{approve, resolved_by}` — approving a subscription escalation writes the `transactional` row that was withheld; denying just closes it out |
 
@@ -258,6 +262,97 @@ accessories, top, top, shoes — capped at 2 per category, her fit-history
 item visibly surfaced, 0.025s and 9 audit_log rows (unchanged from
 before the fix, since this is all in-memory sorting on an
 already-fetched candidate list).
+
+## Vector search replaces the hardcoded occasion-tag matcher
+
+Before this, `_candidates()`'s entire query-relevance filter was a
+3-phrase `if`/`elif`: `"date"+"night"` → an `occasion_tags LIKE`
+lookup, `"work"` or `"gym"` → the same, anything else — including a
+plain `"jeans"`, `"shoes"`, or `"gift ideas"` — got **the entire 1,300+
+SKU catalogue** handed to the ranker with zero query-relevance signal at
+retrieval time, relying entirely on segment/tier/trending scoring
+downstream to happen to surface something on-topic.
+
+`neutail/vector_store.py` replaces that retrieval step with real
+embedding-based nearest-neighbor search over the catalogue (`name +
+category + occasion_tags` as the indexed text per SKU), same live/
+fallback shape as `gateway.py` and `session_store.py`:
+
+- **Live** — [Chroma](https://www.trychroma.com/), an embedded vector
+  database, persisted to `data/chroma/`, one collection (`catalogue`).
+  Embeddings come from Chroma's own bundled local ONNX MiniLM model — no
+  API key, no external service; a ~80MB one-time download on first use,
+  cached under `~/.cache/chroma/` after that, so it works offline on
+  every run after the first.
+- **Fallback** — if `chromadb` isn't installed, or initializing it
+  throws for any reason, a plain token-overlap index built from the same
+  per-SKU text. Cruder (no real semantic generalization — "gift ideas"
+  won't specifically find "necklace" the way an embedding would), but
+  never breaks search entirely just because an optional dependency is
+  missing.
+
+`_candidates()` calls `vector_store.semantic_search(query, top_k=300)`
+and fetches exactly those SKUs from `catalogue` — no more full-table
+scan for the common case. Every result also carries its `semantic_score`
+(0-1) into the candidate dict; `_fallback_rank` folds it into the score
+formula (`+2 * semantic_score`, on par with the tier-match bonus), and
+the live-model prompt/system-prompt both describe the field so MUSE's
+reasoning-tier call weighs it too, not just the deterministic path.
+
+**Verified, on the real seeded 1,300-SKU catalogue** (`vector_store.
+semantic_search`, chroma backend, top 15 by score):
+- `"jeans"` → all 15 top hits are the `jeans` category.
+- `"show me something for date night"` → `top`/`dress` at the top, the
+  same categories the old hardcoded tag covered — nothing regressed.
+- `"gift ideas"` → `accessories` fills the entire top 15 — a query the
+  old matcher had **no path to handle at all** (would've silently fallen
+  through to "hand back everything").
+
+Every call also logs to `audit_log` under `tool = "vector_store:search"`
+(`caller=muse_agent`, `detail="live=True (chroma) query=... top_k=...
+hits=..."`) — the same transparency the Model Gateway gets, visible in
+`GET /audit` or the Admin tab right next to the reasoning-tier call it
+feeds. `GET /admin/vector_search?query=&top_k=` and the Admin tab's "🧭
+Vector search" panel expose the retrieval step directly, without the
+ranking layers on top of it, specifically so this can be demoed as its
+own piece rather than only inferred from the final product grid.
+
+Seed-time indexing: `neutail.seed.seed()` calls `vector_store.
+build_index()` after the catalogue is inserted, so the index is ready
+before the demo starts — same `python3 -m neutail.seed` command as
+always, no separate step. An existing `data/neutail.db` from before this
+feature still works too: `semantic_search()` builds the index lazily on
+first call if the collection is empty.
+
+## MCP layer — the database and vector store, over MCP
+
+`neutail/mcp_server.py` exposes 7 read-only tools to any MCP client
+(Claude Desktop, Claude Code, a custom agent) over HTTP/SSE on `:8765`,
+using `mcp[cli]<2`'s `FastMCP`: `get_customer_segment`,
+`get_fit_profile`, `get_loyalty_status`, `search_products` (the vector
+store), `get_catalogue_item`, `get_audit_log`, `get_business_outcomes`.
+Nothing that commits an order or subscription is exposed.
+
+The point isn't a new capability — `api.py` already exposes all of this
+over REST. The point is a second, standard transport onto the *same*
+policy-checked data, to demonstrate what MCP actually buys you: three of
+the seven tools (`get_customer_segment`, `get_fit_profile`,
+`get_loyalty_status`) route through `runtime.invoke_tool()` under caller
+identity `"mcp_client"` — the same chokepoint every internal agent call
+goes through, not a side door. That identity is explicitly added to
+those three tools' `allowed_callers` (persona.py/tailor.py/tally.py);
+everything else stays denied by default. Verified: calling
+`rank_products` or `commit_order` as `"mcp_client"` raises the same
+`PolicyDenied` an unlisted internal caller would get —
+`mcp_client cannot call rank_products: not in allowed_callers
+['lead_orchestrator', 'muse_agent']` — and both the allowed and the
+denied calls land in `audit_log` exactly like any other tool call. The
+policy engine doesn't know or care that a caller arrived over MCP
+instead of a Python import.
+
+`mcp<2` is pinned deliberately — `mcp` 2.x renamed `FastMCP` to
+`MCPServer` with a different API; `1.30.0` is the last release on the
+stable v1 shape this file uses.
 
 ## Getting the live model actually working
 

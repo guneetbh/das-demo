@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from neutail import admin, contracts, human_review, orchestrator, policy, runtime, session_store
+from neutail import admin, contracts, human_review, orchestrator, policy, runtime, session_store, vector_store
 from neutail.agents import tally
 from neutail.db import get_connection
 
@@ -100,6 +100,29 @@ def admin_outcomes() -> dict:
     seeded population, not asserted constants. See neutail/admin.py for
     what each number does and doesn't claim."""
     return admin.business_outcomes()
+
+
+@app.get("/admin/vector_search")
+def admin_vector_search(query: str, top_k: int = 10) -> dict:
+    """Direct, unfiltered look at vector_store.semantic_search() — the same
+    call MUSE's _candidates() makes internally, minus the segment/fit/
+    diversity layers on top, so it's obvious what the vector database
+    itself is contributing versus the rest of the ranking pipeline."""
+    hits = vector_store.semantic_search(query, top_k=top_k)
+    results = []
+    if hits:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(hits))
+        rows = {
+            row["sku"]: dict(row)
+            for row in conn.execute(
+                f"SELECT * FROM catalogue WHERE sku IN ({placeholders})",
+                tuple(h["sku"] for h in hits),
+            ).fetchall()
+        }
+        conn.close()
+        results = [{**rows[h["sku"]], "score": h["score"]} for h in hits if h["sku"] in rows]
+    return {"query": query, "backend": vector_store.backend(), "results": results}
 
 
 @app.get("/escalations")

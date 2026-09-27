@@ -21,6 +21,20 @@ second figure showing only the deltas (session store, real MUSE→TAILOR
 calls, TALLY, `commit_order`, the deployment collapse) in red against
 the same visual language as the blueprint.
 
+**A separate, current-state diagram is in
+[`docs/fig-current-sequence.html`](docs/fig-current-sequence.html)** —
+not a blueprint reproduction, a single up-to-date trace of one session
+as the code runs it today (vector-search-backed MUSE retrieval, the real
+per-category TAILOR evaluator loop, TALLY point accrual, human-in-the-
+loop). It also draws one thing that doesn't exist: a greyed-out,
+dashed **RESPONSECOMPOSER** lifeline, for the still-hypothetical case
+where `orchestrator.classify_intent()` returns more than one intent per
+message and something has to merge independent agents' answers into one
+reply. Today it never does — `classify_intent()` is single-label and
+`handle_message()` is a plain `if`/`elif`, so this box has no live path
+into it; it's there to show where that piece would go if multi-intent
+requests are ever built.
+
 ---
 
 ## Quick-reference table

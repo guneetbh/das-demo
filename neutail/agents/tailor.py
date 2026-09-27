@@ -80,7 +80,7 @@ def _get_fit_profile(customer_id: str, category: str) -> dict:
 
 contracts.register(
     "get_fit_profile",
-    allowed_callers=["tailor_agent", "lead_orchestrator", "muse_agent"],
+    allowed_callers=["tailor_agent", "lead_orchestrator", "muse_agent", "mcp_client"],
     handler=_get_fit_profile,
 )
 

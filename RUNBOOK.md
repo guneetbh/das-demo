@@ -124,10 +124,21 @@ Open the "🔧 Behind the scenes" expander: `segment: affluent` for Priya,
 not stored or hand-typed. Switch customers in the sidebar and re-run
 the same search to show it side by side.
 
-### 3 — Discovery *(MUSE, UC2 — evaluator loop + diversity cap)*
+### 3 — Discovery *(MUSE, UC2 — evaluator loop + diversity cap + vector search)*
 
 Same search as above (`show me something for date night`) for **Priya**
 specifically. In the product grid, point out:
+
+- **Candidate retrieval is a real vector database, not keyword
+  matching.** Try a query the old build couldn't handle at all, like
+  `gift ideas` or just `jeans` — both now return relevant, on-topic
+  results (accessories, and jeans respectively) because
+  `vector_store.py` does an embedding-based nearest-neighbor search over
+  the catalogue (Chroma, local model, no API key) instead of matching
+  against three hardcoded phrases. See the "🔧 Behind the scenes"
+  expander's segment/confidence line, or `GET /audit` for a
+  `vector_store:search` row right before the reasoning-tier call — same
+  transparency as every other model/tool call in this system.
 - **Category variety** — no more than 2 items from any single category
   (the diversity cap — without it, at 1,300+ SKUs one category can
   swamp every slot on raw item count alone, a real bug found and fixed
@@ -235,6 +246,40 @@ a rejection, it's a pause.
 - **TALLY / loyalty** — point at the sidebar panel before and after the
   step 5 commit; the balance moves by exactly `amount × tier
   multiplier`, visible in real time.
+- **The vector database, isolated from the rest of the pipeline** — in
+  the **📊 Admin** tab, "🧭 Vector search" panel: type any free-text
+  query (try `gift ideas`, `jeans`, `something cozy for winter`) and hit
+  **Search the vector index**. This calls `vector_store.semantic_search()`
+  directly — the same retrieval MUSE's discovery uses — with no
+  segment/tier/diversity ranking on top, so what comes back is purely
+  "what does the embedding space think is closest to this query." Good
+  for showing the vector database as its own piece when someone asks
+  "wait, how does the semantic matching actually work?" instead of only
+  inferring it from the final product grid. The badge next to the query
+  shows which backend answered (`chroma` vs. `fallback`), same
+  live/fallback transparency as the session-memory badge.
+- **MCP: an external agent talking to our database directly** — start
+  the MCP layer (`python3 -m neutail.mcp_server`, serves HTTP/SSE on
+  `:8765`) and connect an MCP client (Claude Desktop, Claude Code, or the
+  small script below) to it. Ask it something like "what's Priya's
+  loyalty tier, and does she have any jeans return history?" and watch it
+  call `get_loyalty_status` and `get_fit_profile` live against the real
+  seeded DB — tool calls visible in the client's own UI. Then show the
+  policy side: any tool NOT explicitly allow-listed for the `mcp_client`
+  caller gets denied exactly like an unlisted internal agent would —
+  ```bash
+  python3 -c "
+  from neutail import runtime, policy
+  from neutail.agents import muse
+  try:
+      runtime.invoke_tool('mcp_client', 'rank_products', customer_id='CUST-PRIYA', segment='affluent', query='jeans')
+  except policy.PolicyDenied as e:
+      print('denied:', e)
+  "
+  ```
+  and both the allowed and denied calls show up in `GET /audit` under
+  `caller=mcp_client`, same as anything else. The point: MCP is just
+  another transport onto the same policy-checked runtime, not a bypass.
 - **The Admin tab** — the business-outcome numbers, computed from the
   seeded population, not asserted: baseline return rate **42.8%**
   drops to **8.2%** once fit guidance exists for that category — a

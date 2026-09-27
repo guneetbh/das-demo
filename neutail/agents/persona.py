@@ -45,7 +45,7 @@ def _get_customer_segment(customer_id: str) -> dict:
 
 contracts.register(
     "get_customer_segment",
-    allowed_callers=["persona_agent", "lead_orchestrator"],
+    allowed_callers=["persona_agent", "lead_orchestrator", "mcp_client"],
     handler=_get_customer_segment,
 )
 
