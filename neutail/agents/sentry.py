@@ -18,7 +18,7 @@ FIRST_TIME_PAYER_TENURE_MONTHS = 3
 # sized for subscriptions would send nearly every premium product
 # ($140-280 in the seeded catalogue) to human review regardless of the
 # customer. Kept per-kind rather than one shared number.
-AMOUNT_THRESHOLDS = {"subscription": 75.0, "order": 300.0}
+AMOUNT_THRESHOLDS = {"subscription": 75.0, "order": 200.0}
 DEFAULT_AMOUNT_THRESHOLD = 75.0
 
 

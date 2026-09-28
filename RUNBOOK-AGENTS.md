@@ -109,6 +109,24 @@ computing `returns / orders` for jeans specifically, live, from the
 seeded population. (Full derivation and cross-checked SQL in
 `RUNBOOK.md`'s "Testing and explaining return-risk" section.)
 
+**New capability, same tool: an optional `customer_note` triggers one
+live fast-tier call.** Omit it and the call above is the whole story —
+zero model calls, MUSE's evaluator loop (§6 below) always omits it for
+exactly that reason. Pass it and TAILOR blends it with the guidance
+above into an actual personalized sentence:
+```bash
+curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke -H "Content-Type: application/json" \
+  -d '{"caller":"tailor_agent","args":{"customer_id":"CUST-PRIYA","category":"jeans","customer_note":"I have wide calves"}}'
+```
+**Captured:**
+`{"has_history":true,"preferred_size":"M","runs":"small","guidance":"size up from M — past returns show this category runs small","return_risk":0.12,...,"customer_note":"I have wide calves","live_guidance":"Size up from your usual M since jeans run small in this category, and going up will also give your calves more room through the leg.","used_live_model":true}`
+
+No API key reachable (or the call fails) → `used_live_model: false`,
+`live_guidance` still present, a deterministic acknowledgment of the
+note rather than silently dropping it. Wired into the Streamlit UI too
+— the product page's fit-check panel has an expander with suggestion
+chips plus a free-text box.
+
 ## 4 — CARE: `resolve_contact`
 
 ```bash

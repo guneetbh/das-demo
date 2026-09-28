@@ -18,7 +18,7 @@ touched by the bulk seed generator:
 
 ---
 
-## Before you start (T-15 min)
+## Before (T-15 min)
 
 **1. Reset to a known, clean state.** Always do this right before the
 demo, not the night before — it wipes anything a rehearsal run wrote
@@ -185,6 +185,24 @@ and click "Check my fit" — expect the **graceful no-history fallback**
 which product, since she has no fit_profile row at all. Same code path
 as Priya's guided answer; the seeded data is the only difference.
 
+**New: TAILOR is also a live agent, on demand.** The same product page
+has an expander — **"Anything about your body or fit preference?"** —
+with suggestion chips (`I have wide calves`, `I'm usually between two
+sizes`, ...) plus a free-text box. Leave it blank and "Check my fit" is
+the fully deterministic path above (no model, instant). Fill it in and
+the exact same button makes one short **fast-tier** live call blending
+the note with the historical guidance — confirmed live:
+```bash
+curl -s -X POST http://localhost:8000/tools/get_fit_profile/invoke -H "Content-Type: application/json" \
+  -d '{"caller":"tailor_agent","args":{"customer_id":"CUST-PRIYA","category":"jeans","customer_note":"I have wide calves"}}'
+```
+**Captured:** `..."customer_note":"I have wide calves","live_guidance":"Size up from your usual M since jeans run small in this category, and going up will also give your calves more room through the leg.","used_live_model":true}`
+
+This is a clean, fast (a few seconds, not MUSE's 30-45s) beat for
+showing that a live call only fires when there's something worth
+reasoning about — same tool, same entry point, model or no model
+depending on what the customer actually gave it to work with.
+
 ### 5 — Upsell, including human-in-the-loop *(CONCIERGE/CARE/SENTRY, UC4)*
 
 Two equivalent ways to trigger this, as **Priya**: type `I have a
@@ -258,19 +276,26 @@ a rejection, it's a pause.
   inferring it from the final product grid. The badge next to the query
   shows which backend answered (`chroma` vs. `fallback`), same
   live/fallback transparency as the session-memory badge.
-- **MCP: an external agent talking to our database directly** — start
-  the MCP layer (`python3 -m neutail.mcp_server`, serves HTTP/SSE on
-  `:8765`) and connect an MCP client (Claude Desktop, Claude Code, or the
-  small script below) to it. Ask it something like "what's Priya's
-  loyalty tier, and does she have any jeans return history?" and watch it
-  call `get_loyalty_status` and `get_fit_profile` live against the real
-  seeded DB — tool calls visible in the client's own UI. Then show the
-  policy side: any tool NOT explicitly allow-listed for the `mcp_client`
-  caller gets denied exactly like an unlisted internal agent would —
+- **MCP: not just an external integration anymore — the literal internal
+  transport too.** Every agent's own entry point (`persona.run()`,
+  `muse.run()`, etc.) dispatches through `neutail/mcp_client.py`, a real
+  `mcp` SDK `ClientSession` connected in-process (no network hop) to the
+  same `neutail/mcp_server.py` registry an external client reaches over
+  HTTP/SSE. One registry, 13 tools (9 policy-checked + 4 read-only), two
+  transports — same policy engine, same audit log, regardless of which
+  one a call arrived over.
+  To show the *external* side specifically: start the standalone server
+  (`python3 -m neutail.mcp_server`, `:8765`) and connect an MCP client
+  (Claude Desktop, Claude Code, or `demo_mcp_client.py` in this repo) to
+  it. Ask it something like "what's Priya's loyalty tier, and does she
+  have any jeans return history?" and watch it call `get_loyalty_status`
+  and `get_fit_profile` live against the real seeded DB — tool calls
+  visible in the client's own UI. Then show the policy side: any tool
+  NOT explicitly allow-listed for the default `mcp_client` caller gets
+  denied exactly like an unlisted internal agent would —
   ```bash
   python3 -c "
   from neutail import runtime, policy
-  from neutail.agents import muse
   try:
       runtime.invoke_tool('mcp_client', 'rank_products', customer_id='CUST-PRIYA', segment='affluent', query='jeans')
   except policy.PolicyDenied as e:
@@ -278,8 +303,9 @@ a rejection, it's a pause.
   "
   ```
   and both the allowed and denied calls show up in `GET /audit` under
-  `caller=mcp_client`, same as anything else. The point: MCP is just
-  another transport onto the same policy-checked runtime, not a bypass.
+  `caller=mcp_client`, same as anything else. The point: MCP is the
+  transport for the whole agent mesh now, internal or external, never a
+  bypass around the policy-checked runtime underneath it.
 - **Multi-intent: one message, two specialists, one composed reply** — in
   the search bar, as **Priya**, type `show me something for date night,
   and check my fit for jeans`. **Expect:** not a single product grid or a
@@ -308,12 +334,15 @@ a rejection, it's a pause.
   generates some) — say that plainly rather than let a flat zero look
   like something's broken.
 - **The audit trail** — also in the **📊 Admin** tab now (moved off the
-  main shop view to keep the storefront looking like a storefront), or
-  `GET /audit?limit=20` directly. Every step above is a row here,
+  main shop view to keep the storefront looking like a storefront), as
+  a real sortable table (Time/UTC, Status, Caller, Tool, Detail — not a
+  scrolling text dump), or `GET /audit?limit=20` directly. `created_at`
+  is SQLite's own `datetime('now')` insert-time default, not something
+  bolted on after the fact. Every step above is a row here,
   policy-checked. This is the answer to "how do we know this is
-  actually enforcing anything" —
-  point at a `resolve_escalation` row right next to the `commit_subscription`
-  it completed.
+  actually enforcing anything" — point at a `resolve_escalation` row
+  right next to the `commit_subscription` it completed, timestamps
+  showing the actual order things happened in.
 
 ---
 

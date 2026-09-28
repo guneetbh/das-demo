@@ -17,12 +17,19 @@ checked here, since Mission #3's diagrams aren't part of this repo.
 
 **For the static component view rather than a request-by-request trace,
 see [`docs/architecture-interactive.html`](docs/architecture-interactive.html)**
-— all 23 components (clients, transport, the security/policy-as-code
-plane, orchestration, all seven agents, the model gateway, and all three
-stores: SQLite, Redis, the vector store), each clickable for a zoomed-in
-explanation citing the real file. Complements the two sequence diagrams
-below, which trace one request through time rather than showing the
-pieces at rest.
+— all 24 components (clients, transport — including the MCP Server and
+the internal MCP Client added when internal dispatch became real MCP —
+the security/policy-as-code plane, orchestration, all seven agents, the
+model gateway, and all three stores: SQLite, Redis, the vector store),
+each clickable for a zoomed-in explanation citing the real file.
+Complements the two sequence diagrams below, which trace one request
+through time rather than showing the pieces at rest.
+
+**For a single page covering the high-level architecture, a condensed
+component model, and a deployment model together, see
+[`docs/high-level-architecture.html`](docs/high-level-architecture.html)**
+— also covers design patterns, access & policy as code, memory &
+context, the tech stack, and computed business outcomes in one place.
 
 **A redrawn Fig. 02 is in [`docs/fig-02-as-built.html`](docs/fig-02-as-built.html)** —
 open it in a browser: the original diagram reproduced unchanged, plus a
@@ -247,6 +254,33 @@ of rigor, but a strictly stronger version of the same claim.
 ---
 
 ## Beyond the diagram — flows with no Fig. 02 equivalent
+
+**MCP became the literal internal transport, not just an external
+integration.** Fig. 01's Agent Runtime box is labeled "MCP," but the
+first build of it was a custom, synchronous, in-process dispatcher that
+was MCP-*style* — not literally the protocol — plus a separate, smaller
+MCP server bolted on afterward purely for external clients (Claude
+Desktop, etc.). Neither Fig. 01 nor Fig. 02 distinguishes internal vs.
+external dispatch at all. The build now makes them the same thing:
+every agent's own entry point dispatches through `neutail/mcp_client.py`,
+a real `mcp` SDK `ClientSession` connected in-process (no network hop)
+to the same `neutail/mcp_server.py` registry an external client reaches
+over HTTP/SSE — one registry, 13 tools, two transports, same policy
+engine and audit log either way. See `docs/architecture-interactive.html`
+components 4/5 (MCP Server / MCP Client) and RUNBOOK.md's MCP bonus
+beat.
+
+**TAILOR gained an optional live path — the one agent that
+demonstrates both sides of the live/no-live decision through the same
+button.** Not in any version of the blueprint, since `get_fit_profile`
+was always drawn as a plain Data-Universe lookup. Built afterward: an
+optional `customer_note` (free text about body/fit preferences —
+structured data the seeded tables were never going to have) triggers
+one live fast-tier call blending it with the deterministic guidance;
+omitted, the call stays exactly as fast as before this existed —
+verified MUSE's evaluator loop (§③ above) never passes it, so nothing
+about that hot path changed. See RUNBOOK.md §4 and RUNBOOK-AGENTS.md §3
+for live-captured examples both ways.
 
 **TALLY (loyalty agent) — built despite being explicitly scoped out.**
 §01 "Build scope" and §09 "Outcomes" both state, in so many words, that
