@@ -7,3 +7,16 @@ data/chroma/
 .env
 .DS_Store
 dump.rdb
+data/*.db-wal
+data/*.db-shm
+.pytest_cache/
+.shots/
+# Office lock files and local tool state
+~$*
+*.lock
+.claude/scheduled_tasks.lock
+
+# Packaging
+*.egg-info/
+build/
+dist/

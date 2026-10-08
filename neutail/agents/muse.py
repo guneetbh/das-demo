@@ -1,176 +1,151 @@
-"""MUSE — UC2 discovery (§04: provides rank_products).
+"""MUSE — UC2 personalised discovery.
 
-Ranks a persona-driven feed with the reasoning model tier, then runs
-the evaluator-optimizer loop from §03: every candidate's return-risk
-comes from TAILOR's get_fit_profile, called directly (Fig. 03's
-dashed feedback edge), before the feed goes back to the Orchestrator.
+Pipeline: semantic candidates (vector store) or, for the home page, the
+customer's affinity categories → in-stock filter (one query) → SCOUT trend
+and PACE price context → TAILOR return risk per category (evaluator loop) →
+rank (reasoning model for typed searches, deterministic ranker otherwise) →
+diversity cap → behavioural logging.
 
-Every ranking it returns is also logged to `behavioural` as a durable
-'search' event — not to session memory, which has a TTL and is meant to
-disappear, but to the same table PERSONA already reads for
-preference_tags. That's what makes "recommendations reflect today's
-search" survive a session (or a Redis restart): the next call to
-_candidates() sees it via ENGAGEMENT_WINDOW_HOURS, same as any other
-returning-customer signal.
-
-Candidate retrieval itself is `vector_store.semantic_search()` — real
-embedding-based nearest-neighbor search over the catalogue (Chroma, local
-ONNX model, falling back to token overlap if chromadb isn't installed),
-not the three-hardcoded-phrase matcher this used to be. See vector_store.py.
+Typed searches are logged as 'search' events; recommendation grids as
+'impression' events, which never feed back into engagement boosts.
 """
 
 import json
 
-from neutail import contracts, gateway, mcp_client, runtime, vector_store
-from neutail.agents import tailor  # noqa: F401 — import registers get_fit_profile
-from neutail.db import get_connection
+from pydantic import BaseModel, Field
+
+from neutail.context import Context
+from neutail.data import behavioural, catalogue, inventory
+from neutail.platform import audit, contracts, gateway, prompts, runtime, vector_store
 
 AGENT_NAME = "muse_agent"
-ENGAGEMENT_WINDOW_HOURS = 24  # "today", approximated as a rolling window rather than a calendar day
-MAX_PER_CATEGORY = 2  # diversity cap on final results — see _apply_diversity_cap
-PROMPT_CANDIDATE_LIMIT = 60  # cap on what gets sent to a live model — see _prefilter_for_prompt
-PROMPT_MAX_PER_CATEGORY = 12  # roomier than MAX_PER_CATEGORY; this is pre-filtering, not final selection
-SEMANTIC_CANDIDATE_LIMIT = 300  # how many nearest neighbors vector_store hands back before any other filtering
-
-SYSTEM_PROMPT = (
-    "You are MUSE, a product-ranking agent for an apparel retailer. Given a customer "
-    "segment, a query, and a list of candidate SKUs (each with tier, price, trending flag, "
-    "return_risk from the fit-profile service, recently_engaged — whether the customer "
-    "searched or browsed this category in the last 24h — and semantic_score, a 0-1 embedding-"
-    "similarity score from a vector search of the catalogue against this exact query), rank up "
-    "to return_count of the best matches, best first — a wide, varied pool, not just the single "
-    "best category. Weigh semantic_score as a genuine relevance signal, not decoration — it's "
-    "already query-specific. Prefer 'premium' items for the affluent segment and "
-    "'private_label' for the value segment. Give recently_engaged items a modest boost, all "
-    "else equal — this is a returning customer, not a cold start. Penalize high return_risk. "
-    "Reply with ONLY a JSON array, best first, of objects: {\"sku\": str, \"reason\": str (one "
-    "short sentence)}."
-)
+ENGAGEMENT_WINDOW_HOURS = 24
+MAX_PER_CATEGORY = 2
+PROMPT_CANDIDATE_LIMIT = 60
+PROMPT_MAX_PER_CATEGORY = 12
+SEMANTIC_CANDIDATE_LIMIT = 300
 
 
-def _in_stock(conn, sku: str) -> bool:
-    row = conn.execute(
-        "SELECT COALESCE(SUM(stock_qty), 0) AS total FROM inventory WHERE sku = ?", (sku,)
-    ).fetchone()
-    return row["total"] > 0
+class RankIn(BaseModel):
+    query: str = Field(default="", max_length=500)
+    top_n: int = Field(default=8, ge=1, le=24)
+    source: str = Field(default="search", pattern="^(search|recommendation|similar)$")
+    category: str | None = Field(default=None, pattern="^(dress|top|jeans|shoes|accessories|jacket|athleisure)$")
+    exclude_sku: str | None = Field(default=None, max_length=32)
 
 
-def _recently_engaged_categories(conn, customer_id: str) -> set[str]:
-    """Categories this customer browsed or searched in the last
-    ENGAGEMENT_WINDOW_HOURS, read straight from the durable behavioural
-    table — this is "today's search" surviving past the session."""
-    rows = conn.execute(
-        f"""SELECT DISTINCT c.category
-            FROM behavioural b JOIN catalogue c ON c.sku = b.sku
-            WHERE b.customer_id = ?
-              AND b.created_at >= datetime('now', '-{ENGAGEMENT_WINDOW_HOURS} hours')""",
-        (customer_id,),
-    ).fetchall()
-    return {row["category"] for row in rows}
+class BrowseIn(BaseModel):
+    sku: str = Field(min_length=3, max_length=32)
 
 
-def _candidates(customer_id: str, query: str) -> list[dict]:
-    conn = get_connection()
+def _segment(ctx: Context) -> dict:
+    if ctx.segment:
+        return ctx.segment
+    return runtime.invoke(ctx, "get_customer_segment")
 
-    hits = vector_store.semantic_search(query, top_k=SEMANTIC_CANDIDATE_LIMIT)
-    semantic_score_by_sku = {hit["sku"]: hit["score"] for hit in hits}
-    if semantic_score_by_sku:
-        placeholders = ",".join("?" * len(semantic_score_by_sku))
-        rows = conn.execute(
-            f"SELECT * FROM catalogue WHERE sku IN ({placeholders})", tuple(semantic_score_by_sku)
-        ).fetchall()
-    else:
-        # Empty catalogue, or the vector store itself came back empty for some
-        # reason — fall back to a full scan rather than return zero candidates.
-        rows = conn.execute("SELECT * FROM catalogue").fetchall()
 
-    engaged_categories = _recently_engaged_categories(conn, customer_id)
+def _candidate_rows(ctx: Context, query: str, source: str, category: str | None,
+                    segment: dict) -> tuple[list[dict], dict, dict]:
+    """(rows, semantic score by sku, affinity by sku)."""
+    if query and source != "recommendation":
+        hits = vector_store.semantic_search(query, top_k=SEMANTIC_CANDIDATE_LIMIT, caller=AGENT_NAME)
+        scores = {h["sku"]: h["score"] for h in hits}
+        rows = list(catalogue.many(list(scores)).values())
+        if category:
+            rows = [r for r in rows if r["category"] == category]
+        if rows:
+            return rows, scores, {}
+    # Home-page recommendations (or a query with no semantic hits): draw from
+    # the customer's affinity categories plus what's trending, new and on sale.
+    preferred = segment.get("preference_tags") or []
+    pool: dict[str, dict] = {}
+    for cat in ([category] if category else preferred[:3]):
+        for row in catalogue.browse(cat, limit=80):
+            pool[row["sku"]] = row
+    for row in catalogue.browse(category, trending=True, limit=60) + catalogue.browse(category, new_only=True, limit=40) \
+            + catalogue.browse(category, on_sale=True, limit=40):
+        pool[row["sku"]] = row
+    affinity_rank = {c: 1.0 - i * 0.25 for i, c in enumerate(preferred[:4])}
+    return list(pool.values()), {}, {sku: affinity_rank.get(row["category"], 0.0) for sku, row in pool.items()}
 
-    # get_fit_profile depends only on (customer_id, category), never the SKU —
-    # cache it per category instead of calling it once per candidate. At 1,300+
-    # SKUs but 7 categories, that's the difference between ~500 tool calls
-    # (and audit_log rows) per query and ~7.
+
+def _candidates(ctx: Context, query: str, source: str, category: str | None, exclude_sku: str | None,
+                segment: dict) -> list[dict]:
+    rows, semantic, affinity = _candidate_rows(ctx, query, source, category, segment)
+    rows = [r for r in rows if r["sku"] != exclude_sku]
+    stocked = inventory.in_stock([r["sku"] for r in rows])
+    rows = [r for r in rows if r["sku"] in stocked]
+    if not rows:
+        return []
+
+    skus = [r["sku"] for r in rows]
+    trend = runtime.invoke(ctx, "get_trend_signal", skus=skus[:400])
+    prices = runtime.invoke(ctx, "get_price_context", skus=skus[:400])["prices"]
+    engaged = behavioural.engaged_categories(ctx.customer_id, ENGAGEMENT_WINDOW_HOURS)
+    momentum = trend["category_momentum"]
+
     fit_by_category: dict[str, dict] = {}
-
     out = []
     for row in rows:
-        if not _in_stock(conn, row["sku"]):
-            continue
-        category = row["category"]
-        if category not in fit_by_category:
-            # evaluator loop: MUSE calls TAILOR's tool directly (Fig. 03)
-            fit_by_category[category] = runtime.invoke_tool(
-                AGENT_NAME, "get_fit_profile", customer_id=customer_id, category=category
-            )
-        fit = fit_by_category[category]
-        out.append(
-            {
-                "sku": row["sku"],
-                "name": row["name"],
-                "category": row["category"],
-                "price": row["price"],
-                "tier": row["tier"],
-                "trending": bool(row["trending"]),
-                "return_risk": fit["return_risk"],
-                "recently_engaged": row["category"] in engaged_categories,
-                "image_url": row["image_url"],
-                "semantic_score": semantic_score_by_sku.get(row["sku"], 0.0),
-            }
-        )
-    conn.close()
+        cat = row["category"]
+        if cat not in fit_by_category:
+            fit_by_category[cat] = runtime.invoke(ctx, "get_fit_profile", category=cat)
+        price = prices.get(row["sku"], {})
+        out.append({
+            "sku": row["sku"], "name": row["name"], "category": cat, "colour": row["colour"],
+            "price": row["price"], "was_price": row["was_price"], "on_sale": bool(price.get("on_sale")),
+            "discount_pct": price.get("discount_pct", 0), "low_stock": bool(price.get("low_stock")),
+            "tier": row["tier"], "trending": bool(row["trending"]), "is_new": bool(row["is_new"]),
+            "category_momentum": momentum.get(cat, 0.0),
+            "return_risk": fit_by_category[cat]["return_risk"],
+            "recently_engaged": cat in engaged,
+            "semantic_score": semantic.get(row["sku"], 0.0),
+            "affinity": affinity.get(row["sku"], 0.0),
+            "image_url": row["image_url"],
+        })
     return out
 
 
-def _log_search(customer_id: str, results: list[dict]) -> None:
-    if not results:
-        return
-    conn = get_connection()
-    with conn:
-        conn.executemany(
-            "INSERT INTO behavioural (customer_id, event_type, sku) VALUES (?, 'search', ?)",
-            [(customer_id, r["sku"]) for r in results],
-        )
-    conn.close()
-
-
-def _fallback_rank(candidates: list[dict], segment: str) -> str:
-    """Scores and sorts ALL candidates — not just the eventual top_n. The
-    diversity cap needs the full ranked list to find each category's best
-    items; handing it an already-truncated top-N slice (as an earlier
-    version of this function did) defeats it, since a dominant category can
-    fill that slice entirely on raw score before any other category gets
-    a look-in."""
-    preferred_tier = "premium" if segment == "affluent" else "private_label"
+def _fallback_rank(candidates: list[dict], segment: dict, source: str = "search") -> str:
+    """Scores every candidate (the diversity cap needs the full ordering)."""
+    preferred_tier = "premium" if segment["segment"] == "affluent" else "private_label"
+    threshold = vector_store.match_threshold()
     scored = []
     for c in candidates:
         score = (
             (2 if c["tier"] == preferred_tier else 0)
-            + (2 * c["semantic_score"])
+            + 2.5 * c["semantic_score"]
+            + 1.5 * c["affinity"]
             + (1.5 if c["recently_engaged"] else 0)
             + (1 if c["trending"] else 0)
-            - c["return_risk"]
+            + 0.5 * c["category_momentum"]
+            + (0.75 if c["on_sale"] and segment["segment"] == "value" else 0)
+            + (0.4 if c["is_new"] else 0)
+            - 1.5 * c["return_risk"]
         )
-        reason = (
-            f"{c['tier']} pick for the {segment} segment"
-            + (", closely matches your search" if c["semantic_score"] >= 0.6 else "")
-            + (", trending" if c["trending"] else "")
-            + (", seen earlier today" if c["recently_engaged"] else "")
-            + f"; return-risk {c['return_risk']:.0%}"
-        )
-        scored.append({"sku": c["sku"], "reason": reason, "category": c["category"], "_score": score})
+        bits = []
+        if c["semantic_score"] >= threshold:
+            bits.append("a similar style" if source == "similar" else "a close match for what you searched")
+        elif c["affinity"] >= 0.75:
+            bits.append(f"picked from your favourite category, {c['category']}")
+        if c["recently_engaged"]:
+            bits.append("in a category you've been browsing")
+        if c["trending"]:
+            bits.append("trending right now")
+        if c["on_sale"]:
+            bits.append(f"{c['discount_pct']}% off")
+        if c["is_new"]:
+            bits.append("just landed")
+        if c["return_risk"] < 0.15:
+            bits.append("a reliable fit for you")
+        lead = "A premium pick" if c["tier"] == "premium" else "Great value"
+        reason = lead + (" — " + ", ".join(bits[:3]) if bits else f" in {c['category']}")
+        scored.append({"sku": c["sku"], "reason": reason + ".", "_score": score})
     scored.sort(key=lambda x: x["_score"], reverse=True)
     return json.dumps(scored)
 
 
-def _apply_diversity_cap(ranked_pool: list[dict], top_n: int, max_per_category: int = MAX_PER_CATEGORY) -> list[dict]:
-    """Fills top_n from a ranked pool, capping how many items from the same
-    category can appear. Without this, a category with far more SKUs than
-    others (and so more absolute trending items, at a flat per-SKU trending
-    rate) can swamp every slot on raw count alone, regardless of how any
-    other category's items score — this is what let dresses fill 20/20
-    slots at 1,300+ SKUs even when a jeans item was scoring higher than
-    most individual dresses (§ discovered via testing at seed-data scale).
-    """
+def apply_diversity_cap(ranked_pool: list[dict], top_n: int, max_per_category: int = MAX_PER_CATEGORY) -> list[dict]:
     selected, counts, overflow = [], {}, []
     for item in ranked_pool:
         if len(selected) == top_n:
@@ -181,101 +156,101 @@ def _apply_diversity_cap(ranked_pool: list[dict], top_n: int, max_per_category: 
         else:
             overflow.append(item)
     if len(selected) < top_n:
-        # not enough distinct categories to fill top_n under the cap — relax it
-        # rather than under-fill, still taking overflow in ranked order
         selected.extend(overflow[: top_n - len(selected)])
     return selected
 
 
-def _prefilter_for_prompt(candidates: list[dict], segment: str, limit: int = PROMPT_CANDIDATE_LIMIT) -> list[dict]:
-    """Bounds what actually gets sent to a live model. Discovered via testing:
-    sending all 674 date-night candidates produced a 171K-character prompt,
-    the model's response hit max_tokens mid-JSON (stop_reason='max_tokens'),
-    and the truncated JSON failed to parse — silently falling back to the
-    deterministic ranker on every call, real key or not. Diversity-capped
-    at a much roomier threshold than the final result (12 vs. 2 per
-    category) so the model still has real choices, not just pre-decided
-    ones — it's a pre-filter, not a ranking.
-    """
-    if len(candidates) <= limit:
+def _prefilter_for_prompt(candidates: list[dict], segment: dict) -> list[dict]:
+    if len(candidates) <= PROMPT_CANDIDATE_LIMIT:
         return candidates
-    scored = json.loads(_fallback_rank(candidates, segment))
     by_sku = {c["sku"]: c for c in candidates}
-    pool = [by_sku[item["sku"]] for item in scored if item["sku"] in by_sku]
-    return _apply_diversity_cap(pool, top_n=limit, max_per_category=PROMPT_MAX_PER_CATEGORY)
+    pool = [by_sku[i["sku"]] for i in json.loads(_fallback_rank(candidates, segment))]
+    return apply_diversity_cap(pool, PROMPT_CANDIDATE_LIMIT, PROMPT_MAX_PER_CATEGORY)
 
 
-def _rank_products(customer_id: str, segment: str, query: str, top_n: int = 6) -> dict:
-    candidates = _candidates(customer_id, query)
+def _rank_products(ctx: Context, query: str, top_n: int, source: str, category: str | None,
+                   exclude_sku: str | None) -> dict:
+    query = prompts.clean_user_text(query)
+    if source == "similar":
+        anchor = catalogue.require(exclude_sku) if exclude_sku else None
+        if anchor is None:
+            raise ValueError("similar-item recommendations need the anchor sku in exclude_sku")
+        query = query or f"{anchor['colour']} {anchor['name']} {anchor['occasion_tags'].replace(',', ' ')}"
+    segment = _segment(ctx)
+    candidates = _candidates(ctx, query, source, category, exclude_sku, segment)
     by_sku = {c["sku"]: c for c in candidates}
-    # Bounds the live model's *response* (defensive parsing limit) and what the
-    # prompt asks it to return — not what the fallback ranker considers, which
-    # is always every candidate, so the diversity cap always has a full pool.
-    response_bound = min(len(candidates), max(top_n * 4, 16))
-    prompt_candidates = _prefilter_for_prompt(candidates, segment)
+    max_per_category = top_n if category else MAX_PER_CATEGORY
 
-    prompt = json.dumps({"segment": segment, "query": query, "return_count": response_bound, "candidates": prompt_candidates})
-    text, live = gateway.call_model(
-        AGENT_NAME, "reasoning", SYSTEM_PROMPT, prompt,
-        fallback=lambda: _fallback_rank(candidates, segment),
-    )
+    used_live = False
+    ranked_pool: list[dict] = []
+    if candidates and source == "search" and query:
+        prompt_obj = prompts.get("muse_rank")
+        response_bound = min(len(candidates), max(top_n * 3, 16))
+        payload = json.dumps({
+            "segment": segment["segment"], "micro_segment": segment.get("micro_segment"), "query": query,
+            "return_count": response_bound,
+            "candidates": [{k: c[k] for k in ("sku", "name", "category", "colour", "price", "tier", "trending",
+                                              "on_sale", "return_risk", "recently_engaged", "semantic_score")}
+                           for c in _prefilter_for_prompt(candidates, segment)],
+        })
+        text, live = gateway.call_model(AGENT_NAME, "reasoning", prompt_obj, payload,
+                                        fallback=lambda: _fallback_rank(candidates, segment))
+        try:
+            ranked = json.loads(gateway.extract_json(text))
+            if live:
+                ranked = ranked[:response_bound]
+            for item in ranked:
+                base = by_sku.get(item.get("sku"))
+                if base is not None:
+                    reason, _ = prompts.filter_output(str(item.get("reason", "")), max_chars=160)
+                    ranked_pool.append({**base, "reason": reason})
+            if not ranked_pool:
+                raise ValueError("no usable ranking")
+            used_live = live
+        except Exception as exc:
+            if live:
+                audit.record(kind="model", caller=AGENT_NAME, tool="model_gateway:reasoning", outcome="fallback",
+                             detail={"reason": f"unusable live response: {type(exc).__name__}: {exc}"})
+            ranked_pool = []
+    if not ranked_pool and candidates:
+        ranked_pool = [{**by_sku[i["sku"]], "reason": i["reason"]}
+                       for i in json.loads(_fallback_rank(candidates, segment, source))]
 
-    ranked_pool = []
-    used_live_results = False
-    try:
-        ranked = json.loads(gateway.extract_json(text))
-        if live:
-            # response_bound is a defensive limit on an external model's output
-            # only — the deterministic fallback already returns exactly the
-            # full candidate list, sized for the diversity cap below, and
-            # re-truncating it here would silently undo that (as an earlier
-            # version of this function did: gateway.call_model's fallback
-            # text is valid JSON too, so it always took this try branch, not
-            # the except below, and got bounded right back down anyway).
-            ranked = ranked[:response_bound]
-        for item in ranked:
-            base = by_sku.get(item.get("sku"))
-            if base is None:
-                continue
-            ranked_pool.append({**base, "reason": item.get("reason", "")})
-        if not ranked_pool:
-            raise ValueError("model returned no usable ranking")
-        used_live_results = live
-    except Exception as exc:
-        # `live` can be True here (the API call itself succeeded) even though
-        # this branch runs — e.g. a truncated or malformed response. Report
-        # used_live_model on whether the RESULTS came from the model, not on
-        # whether the gateway reached it; the two silently diverged before
-        # this fix, so a truncated-JSON failure looked identical to a real
-        # live ranking in the response. Logged, not swallowed — this branch
-        # firing with live=True means the model was reached but its response
-        # was unusable, worth knowing about even though the fallback keeps
-        # the demo working either way.
-        if live:
-            runtime.log_event(AGENT_NAME, "model_gateway:reasoning", allowed=True,
-                               detail=f"live response unusable, fell back: {type(exc).__name__}: {exc}")
-        ranked = json.loads(_fallback_rank(candidates, segment))
-        ranked_pool = [{**by_sku[item["sku"]], "reason": item["reason"]} for item in ranked if item["sku"] in by_sku]
+    results = apply_diversity_cap(ranked_pool, top_n, max_per_category)
+    event = "search" if source == "search" and query else "impression"
+    behavioural.log(ctx.customer_id, event, [r["sku"] for r in results], query=query or None)
+    return {"query": query, "source": source, "segment": segment["segment"],
+            "micro_segment": segment.get("micro_segment"), "used_live_model": used_live, "results": results}
 
-    results = _apply_diversity_cap(ranked_pool, top_n)
-    _log_search(customer_id, results)
-    return {"query": query, "segment": segment, "used_live_model": used_live_results, "results": results}
+
+def _log_browse(ctx: Context, sku: str) -> dict:
+    """Record that the customer opened a product page — a real engagement signal."""
+    item = catalogue.get(sku)
+    if item is None:
+        raise ValueError(f"unknown sku: {sku}")
+    behavioural.log(ctx.customer_id, "browse", [sku])
+    return {"logged": True, "sku": sku, "category": item["category"]}
+
+
+def _recently_viewed(ctx: Context) -> dict:
+    """The customer's recently opened products, newest first."""
+    skus = behavioural.recently_viewed(ctx.customer_id)
+    items = catalogue.many(skus)
+    return {"results": [items[s] for s in skus if s in items]}
 
 
 contracts.register(
-    "rank_products",
-    allowed_callers=["muse_agent", "lead_orchestrator"],
-    handler=_rank_products,
+    "rank_products", owner=AGENT_NAME, allowed_callers=["lead_orchestrator", "admin"],
+    handler=_rank_products, input_model=RankIn,
+    domains={"catalogue": "R", "inventory": "R", "behavioural": "RW"},
+    description="Personalised product ranking: semantic retrieval, trend/price context, fit-risk evaluator "
+                "loop, model or deterministic ranking, diversity cap.",
 )
-
-
-async def run(customer_id: str, segment: str, query: str, top_n: int = 6) -> dict:
-    """MUSE's entry point — the Orchestrator calls this (Fig. 02, step 3).
-    Dispatches over MCP (mcp_client — real protocol, in-process). Everything
-    *inside* rank_products (the vector search, the evaluator-loop calls to
-    TAILOR) stays exactly as it was — a handler executing server-side calls
-    another tool the same synchronous way it always has; only the boundary
-    the Orchestrator itself crosses to reach MUSE at all is now MCP."""
-    return await mcp_client.call_tool(
-        AGENT_NAME, "rank_products", customer_id=customer_id, segment=segment, query=query, top_n=top_n
-    )
+contracts.register(
+    "log_browse", owner=AGENT_NAME, allowed_callers=["storefront"], handler=_log_browse,
+    input_model=BrowseIn, domains={"catalogue": "R", "behavioural": "W"}, side_effect=False,
+)
+contracts.register(
+    "recently_viewed", owner=AGENT_NAME, allowed_callers=["storefront", "lead_orchestrator"],
+    handler=_recently_viewed, domains={"catalogue": "R", "behavioural": "R"},
+)

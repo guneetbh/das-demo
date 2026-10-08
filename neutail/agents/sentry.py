@@ -1,80 +1,129 @@
-"""SENTRY — UC4 payment policy (§04: provides check_payment_policy).
+"""SENTRY — checkout risk & approval; the human-in-the-loop gate.
 
-This is the human-in-the-loop pattern from §03 made real: SENTRY doesn't
-have a special escalation wire (Fig. 03's point) — it just writes a row
-to `escalations` through the same tool path as everything else, and
-CONCIERGE reads that status back instead of treating "not approved" as
-a denial.
+Scores each charge rather than comparing it to one number. Approves below
+
+the threshold; otherwise writes a pending escalation (idempotently) that a
+
+human resolves. It never commits anything itself.
+
 """
 
-from neutail import contracts, mcp_client
-from neutail.db import get_connection
+from pydantic import BaseModel, Field
+
+from neutail.context import Context
+
+from neutail.data import crm, escalations, transactional
+
+from neutail.platform import contracts
 
 AGENT_NAME = "sentry_agent"
 
-FIRST_TIME_PAYER_TENURE_MONTHS = 3
-# A recurring subscription and a one-time product order carry different
-# risk: $75/month compounds, a single purchase doesn't, so a threshold
-# sized for subscriptions would send nearly every premium product
-# ($140-280 in the seeded catalogue) to human review regardless of the
-# customer. Kept per-kind rather than one shared number.
-AMOUNT_THRESHOLDS = {"subscription": 75.0, "order": 200.0}
-DEFAULT_AMOUNT_THRESHOLD = 75.0
+AMOUNT_THRESHOLDS = {"subscription": 75.0, "order": 250.0}
+
+ESCALATE_AT = 0.5
 
 
-def _check_payment_policy(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
-    conn = get_connection()
-    customer = conn.execute(
-        "SELECT tenure_months FROM customers WHERE customer_id = ?", (customer_id,)
-    ).fetchone()
-    if customer is None:
-        conn.close()
-        raise ValueError(f"unknown customer_id: {customer_id}")
+class PaymentCheckIn(BaseModel):
 
-    threshold = AMOUNT_THRESHOLDS.get(kind, DEFAULT_AMOUNT_THRESHOLD)
-    first_time_payer = customer["tenure_months"] < FIRST_TIME_PAYER_TENURE_MONTHS
-    over_amount = amount > threshold
+    amount: float = Field(gt=0, le=10000)
 
-    if not (first_time_payer or over_amount):
-        conn.close()
-        return {"approved": True, "escalated": False}
+    kind: str = Field(pattern="^(subscription|order)$")
 
-    reason = ", ".join(
-        r for r, cond in [
-            ("first-time payer", first_time_payer),
-            (f"amount ${amount:.2f} over ${threshold:.2f} policy bound for {kind}", over_amount),
-        ] if cond
+    sku: str | None = Field(default=None, max_length=32)
+
+    size: str | None = Field(default=None, max_length=8)
+
+    quantity: int = Field(default=1, ge=1, le=10)
+
+    plan: str | None = Field(default=None, max_length=32)
+
+    offer_id: str | None = Field(default=None, max_length=64)
+
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+def score(customer: dict, stats: dict, amount: float, kind: str) -> tuple[float, list[str]]:
+
+    reasons, risk = [], 0.0
+
+    threshold = AMOUNT_THRESHOLDS[kind]
+
+    if amount > threshold:
+
+        risk += 0.5
+
+        reasons.append(f"£{amount:.2f} is over the £{threshold:.2f} auto-approve bound for a {kind}")
+
+    if stats["n_orders"] == 0:
+
+        risk += 0.3
+
+        reasons.append("first-time payer")
+
+    elif stats["avg_amount"] and amount > 3 * stats["avg_amount"]:
+
+        risk += 0.25
+
+        reasons.append(f"{amount / stats['avg_amount']:.1f}× this customer's average order")
+
+    if stats["n_last_24h"] >= 3:
+
+        risk += 0.25
+
+        reasons.append(f"{stats['n_last_24h']} charges in the last 24h")
+
+    if customer["tenure_months"] < 3:
+
+        risk += 0.15
+
+        reasons.append("account under 3 months old")
+
+    return round(min(risk, 1.0), 2), reasons
+
+
+def _check_payment_policy(ctx: Context, amount: float, kind: str, sku: str | None, size: str | None,
+
+                          quantity: int, plan: str | None, offer_id: str | None, idempotency_key: str | None) -> dict:
+
+    if idempotency_key:
+
+        existing = escalations.by_idempotency_key(idempotency_key)
+
+        if existing:
+
+            return {"approved": False, "escalated": True, "escalation_id": existing["escalation_id"],
+
+                    "risk_score": existing["risk_score"], "reason": existing["reason"], "replayed": True}
+
+    customer = crm.require_customer(ctx.customer_id)
+
+    stats = transactional.stats(ctx.customer_id)
+
+    risk, reasons = score(customer, stats, amount, kind)
+
+    if risk < ESCALATE_AT:
+
+        return {"approved": True, "escalated": False, "risk_score": risk, "signals": reasons}
+
+    reason = "; ".join(reasons)
+
+    escalation_id = escalations.insert(
+
+        customer_id=ctx.customer_id, kind=kind, amount=amount, reason=reason, risk_score=risk, sku=sku,
+
+        size=size, quantity=quantity, plan=plan, offer_id=offer_id, idempotency_key=idempotency_key,
+
     )
-    # sku is only meaningful for 'order' escalations (a subscription isn't
-    # tied to a product) — carried on the row so a human approving it later
-    # has something concrete to approve, and so the approval path can
-    # actually complete the purchase instead of just marking it "approved"
-    # with nothing to act on.
-    with conn:
-        cursor = conn.execute(
-            """INSERT INTO escalations (customer_id, kind, amount, sku, reason, status)
-               VALUES (?, ?, ?, ?, ?, 'pending')""",
-            (customer_id, kind, amount, sku, reason),
-        )
-        escalation_id = cursor.lastrowid
-    conn.close()
-    return {
-        "approved": False,
-        "escalated": True,
-        "escalation_id": escalation_id,
-        "reason": reason,
-    }
+
+    return {"approved": False, "escalated": True, "escalation_id": escalation_id, "risk_score": risk, "reason": reason}
 
 
 contracts.register(
-    "check_payment_policy",
-    allowed_callers=["sentry_agent", "lead_orchestrator", "concierge_agent"],
-    handler=_check_payment_policy,
+
+    "check_payment_policy", owner=AGENT_NAME, allowed_callers=["concierge_agent"],
+
+    handler=_check_payment_policy, input_model=PaymentCheckIn,
+
+    domains={"crm": "R", "transactional": "R", "escalations": "RW"}, side_effect=True,
+
 )
-
-
-async def run(customer_id: str, amount: float, kind: str = "subscription", sku: str | None = None) -> dict:
-    """SENTRY's entry point — the Orchestrator/CONCIERGE calls this (Fig. 02, step 6)."""
-    return await mcp_client.call_tool(
-        AGENT_NAME, "check_payment_policy", customer_id=customer_id, amount=amount, kind=kind, sku=sku
-    )
