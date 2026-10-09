@@ -1,0 +1,25 @@
+{
+    "_comment": "This file contains the configuration for the models used in the application. Capability -> model per provider. Agents ask for a capability, never a model ID. OpenRouter slugs are best-effort; a wrong slug shows up as a logged gateway error, not a silent fallback. Override any entry with NEUTAIL_MODEL_<CAPABILITY>_<PROVIDER> in your environment variables. For example, NEUTAIL_MODEL_TEXT_DAVINCI_003=neutail/text-davinci-003",
+    "capabilities": {
+        "reasoning": {
+            "anthropic": "claude-opus-5-5",
+            "openrouter": "anthropic/claude-opus-5-5",
+            "effort": "medium",
+            "max_tokens": 16000
+        },
+        "fast": {
+            "anthropic": "claude-haiku-4-5",
+            "openrouter": "anthropic/claude-haiku-4-5",
+            "max_tokens": 1024
+        },
+        "vision":{
+            "anthropic": "claude-opus-5-5",
+            "openrouter": "anthropic/claude-opus-5-5",
+            "effort": "low",
+            "max_tokens": 4096
+        },
+        "embedding":{
+            "local": "chroma-onx/all-MiniLM-L6-v2"
+        }
+    }
+}

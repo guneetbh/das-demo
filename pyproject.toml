@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neutail"
+version = "2.0.0"
+description = "Neu.Tail Personalisation Assistant — agent mesh, agent platform, Experience API and storefront"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "requests>=2.32",
+  "pydantic>=2.6",
+  "pyyaml>=6.0",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+ui = ["streamlit>=1.46"]
+live = ["anthropic>=0.40"]
+memory = ["redis>=5.0"]
+vectors = ["chromadb>=0.5"]
+mcp = ["mcp[cli]>=1.6,<2"]
+dev = ["pytest>=8", "httpx>=0.27"]
+all = ["neutail[ui,live,memory,mcp,dev]"]
+
+[tool.setuptools.packages.find]
+include = ["neutail*"]
+
+[tool.setuptools.package-data]
+neutail = ["schema.sql", "prompts/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+

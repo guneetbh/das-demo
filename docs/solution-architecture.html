@@ -1,0 +1,1680 @@
+Don't do anything
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neu.Tail — End-to-End Solution Architecture</title>
+<style>
+  :root {
+    --red: #E31837; --red-tint: #FCEBEB; --ink: #2B2B2B; --ink-2: #5F5E5A; --ink-3: #8C8A84;
+    --cream: #F5F4F1; --cream-2: #E8E6DF; --paper: #FDFDFC; --line: #D9D6CE;
+    --channel: #EAF2FB; --channel-s: #6C8EBF; --exp: #EEF0FA; --exp-s: #6E74B8;
+    --intent: #F3EEFA; --intent-s: #8A6CB8; --orch: #FCEBEB; --orch-s: #E31837;
+    --agent: #FFF5E8; --agent-s: #C9822B; --stub: #F6F1E9; --stub-s: #A99273;
+    --plat: #E9F5EE; --plat-s: #3E8E5E; --data: #EEF3F3; --data-s: #4B7F86; --ext: #F4F4F4; --ext-s: #8C8A84;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: var(--paper); line-height: 1.5; }
+  a { color: var(--red); }
+  header.top { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid var(--line); }
+  .top-inner { max-width: 1440px; margin: 0 auto; display: flex; align-items: center; gap: 24px; padding: 10px 24px; }
+  .brand { font-weight: 800; font-size: 20px; letter-spacing: -.02em; }
+  .brand span { color: var(--red); }
+  nav.toc { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav.toc a { text-decoration: none; color: var(--ink-2); font-size: 13px; padding: 6px 10px; border-radius: 999px; }
+  nav.toc a:hover { background: var(--red-tint); color: var(--red); }
+  main { max-width: 1440px; margin: 0 auto; padding: 0 24px 80px; }
+  section { padding-top: 36px; scroll-margin-top: 56px; }
+  h1 { font-size: 34px; margin: 28px 0 6px; letter-spacing: -.02em; }
+  h2 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 .num { color: var(--red); margin-right: 8px; }
+  h3 { font-size: 16px; margin: 18px 0 8px; }
+  .lede { color: var(--ink-2); font-size: 16px; max-width: 980px; margin: 0 0 18px; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700; color: var(--red); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 1100px) { .g4, .g5 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px) { .g2, .g3, .g4, .g5 { grid-template-columns: 1fr; } }
+  .stat { font-size: 30px; font-weight: 800; color: var(--red); line-height: 1.1; }
+  .stat-label { font-size: 13px; color: var(--ink-2); }
+  .src { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+          background: var(--cream); color: var(--ink-2); margin: 0 4px 4px 0; }
+  .pill.red { background: var(--red-tint); color: var(--red); }
+  .pill.green { background: #E3F1E6; color: #2F7A45; } .pill.amber { background: #FBE9D2; color: #96660E; }
+  ul.tight { margin: 6px 0 0; padding-left: 18px; } ul.tight li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--cream-2); }
+  th { background: var(--cream); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); position: sticky; top: 53px; }
+  td code, li code, p code { background: var(--cream); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---------------- diagram ---------------- */
+  .diagram-frame { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px;
+             border-bottom: 1px solid var(--cream-2); background: linear-gradient(90deg, #fff 0%, var(--cream) 100%); }
+  .toolbar .label { font-size: 12px; color: var(--ink-3); margin-right: 4px; }
+  .btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 13px;
+         font-size: 13px; cursor: pointer; font-family: inherit; }
+  .btn:hover { border-color: var(--red); color: var(--red); }
+  .btn.on { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .spacer { flex: 1; }
+  .svg-wrap { position: relative; background: var(--paper); }
+  svg#arch { display: block; width: 100%; height: auto; aspect-ratio: 1600 / 1065; cursor: grab; user-select: none; }
+  svg#arch.dragging { cursor: grabbing; }
+  .zoom-hint { position: absolute; right: 12px; top: 10px; font-size: 11px; color: var(--ink-3);
+               background: rgba(255,255,255,.85); padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+  .comp rect.box { transition: stroke-width .2s, opacity .3s; }
+  .comp { cursor: pointer; transition: opacity .35s; }
+  .comp.dim { opacity: .28; }
+  .comp.active rect.box { stroke: var(--red) !important; stroke-width: 4; filter: url(#glow); }
+  .comp:hover rect.box { stroke-width: 3; }
+  .band-label { font-size: 11px; font-weight: 700; letter-spacing: .14em; fill: var(--ink-3); text-transform: uppercase; }
+  .c-title { font-size: 15px; font-weight: 700; fill: var(--ink); }
+  .c-sub { font-size: 11.5px; fill: var(--ink-2); }
+  .badge { cursor: pointer; }
+  .badge circle { fill: #fff; stroke: var(--red); stroke-width: 2.5; transition: all .2s; }
+  .badge text { font-size: 13px; font-weight: 800; fill: var(--red); pointer-events: none; }
+  .badge:hover circle, .badge.current circle { fill: var(--red); }
+  .badge:hover text, .badge.current text { fill: #fff; }
+  .badge.done circle { fill: var(--red-tint); }
+  .badge.current circle { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { stroke-width: 2.5; } 50% { stroke-width: 7; stroke-opacity: .35; } 100% { stroke-width: 2.5; } }
+  .flowpath { fill: none; stroke: var(--red); stroke-width: 2; stroke-dasharray: 6 6; opacity: .35; }
+  .flowseg { fill: none; stroke: var(--red); stroke-width: 3.5; opacity: .9; stroke-dasharray: 8 6; animation: dash 1s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -28; } }
+  .plane-text { font-size: 12px; font-weight: 700; letter-spacing: .18em; fill: var(--ink-2); }
+
+  .step-panel { border-top: 1px solid var(--cream-2); padding: 16px 20px 18px; background: #fff; min-height: 210px; }
+  .step-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .step-no { background: var(--red); color: #fff; font-weight: 800; border-radius: 999px; min-width: 34px; height: 34px;
+             display: inline-flex; align-items: center; justify-content: center; font-size: 16px; padding: 0 8px; }
+  .step-title { font-size: 19px; font-weight: 700; }
+  .step-route { font-size: 13px; color: var(--ink-2); }
+  .step-body { display: grid; grid-template-columns: 1.6fr 1fr; gap: 22px; margin-top: 10px; }
+  @media (max-width: 900px) { .step-body { grid-template-columns: 1fr; } }
+  .step-body h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .step-body ol { margin: 0; padding-left: 20px; } .step-body ol li { margin: 4px 0; }
+  .progress { height: 3px; background: var(--cream-2); }
+  .progress > div { height: 100%; background: var(--red); width: 0; transition: width .4s; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); padding: 10px 14px;
+            border-top: 1px solid var(--cream-2); background: var(--cream); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1.5px solid; }
+
+  /* ---------------- ADR ---------------- */
+  details.adr { border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 10px; }
+  details.adr summary { cursor: pointer; padding: 14px 18px; display: flex; gap: 12px; align-items: center; list-style: none; }
+  details.adr summary::-webkit-details-marker { display: none; }
+  details.adr summary .id { font-weight: 800; color: var(--red); min-width: 74px; }
+  details.adr summary .t { font-weight: 700; flex: 1; }
+  details.adr[open] summary { border-bottom: 1px solid var(--cream-2); }
+  .adr-body { padding: 12px 18px 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 26px; font-size: 14px; }
+  .adr-body p { margin: 2px 0 0; }
+  .adr-body b { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  @media (max-width: 900px) { .adr-body { grid-template-columns: 1fr; } }
+  .ring { border-left: 4px solid var(--red); }
+  footer { text-align: center; color: var(--ink-3); font-size: 12px; padding: 30px 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">Neu<span>.</span>Tail <span style="color:var(--ink-3);font-weight:500;font-size:14px">Solution Architecture</span></div>
+    <nav class="toc">
+      <a href="#context">1 · Business context</a>
+      <a href="#architecture">2 · End-to-end architecture</a>
+      <a href="#nfr">3 · Non-functional requirements</a>
+      <a href="#adr">4 · Architecture decisions</a>
+      <a href="#conclusion">5 · Conclusion</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="kicker" style="margin-top:28px">Digital Architect Hackathon · Season 7 · Team 5 — Condor Galaxy</div>
+  <h1>Personalisation Assistant — End-to-End Solution Architecture</h1>
+  <p class="lede">One agentic capability, built once on a governed agent platform and a single data spine, that personalises
+    discovery, sizes every customer, sells services with consent and rewards loyalty, and that can be sold beyond our own
+    estate. This page describes the solution <b>as built</b> in branch <code>feature/target-architecture</code>.</p>
+
+  <!-- ================================================================ 1. BUSINESS CONTEXT -->
+  <section id="context">
+    <h2><span class="num">1</span>Business context</h2>
+    <p class="lede">Neu.Tail is a UK fashion retailer that has chosen to be <b>a digital platform with stores</b>, with 38
+      stores acting as fulfilment, experience and trust nodes. The Personalisation Assistant is the capability that makes that
+      platform intelligent by default.</p>
+
+    <div class="grid g4">
+      <div class="card"><div class="stat">820K</div><div class="stat-label">loyalty members to personalise for</div><div class="src">Deck, slide 14</div></div>
+      <div class="card"><div class="stat">34%</div><div class="stat-label">return rate, mostly size &amp; fit, target 10–15%</div><div class="src">Deck, slides 3 &amp; 18</div></div>
+      <div class="card"><div class="stat">−18%</div><div class="stat-label">declining app opens from a generic, one-size feed</div><div class="src">Deck, slide 19 (Mission 2 pain)</div></div>
+      <div class="card"><div class="stat">38</div><div class="stat-label">stores in one stock pool &amp; one identity across channels</div><div class="src">Deck, slide 19</div></div>
+    </div>
+
+    <h3>Problem statement</h3>
+    <div class="grid g3">
+      <div class="card"><b>Customers aren't understood</b><ul class="tight">
+        <li>The feed is generic, so engagement falls.</li><li>Identity and basket reset between app, web and store.</li>
+        <li>Nothing a customer did yesterday shapes today.</li></ul></div>
+      <div class="card"><b>Returns erode margin</b><ul class="tight">
+        <li>34% of orders come back, mostly wrong size.</li><li>Return reasons are captured but not learned from.</li>
+        <li>No per-customer fit guidance exists before purchase.</li></ul></div>
+      <div class="card"><b>Value is left on the table</b><ul class="tight">
+        <li>No paid service layer (styling, guarantees, access).</li><li>Loyalty accrues points but doesn't engage.</li>
+        <li>Risky charges are checked manually or declined falsely.</li></ul></div>
+    </div>
+
+    <h3>The five functionalities and the agents that own them</h3>
+    <div class="grid g5">
+      <div class="card"><span class="pill red">UC1</span><br><b>Profiling &amp; segmentation</b><br><span class="stat-label">PERSONA · supported by ONEBASKET (identity)</span></div>
+      <div class="card"><span class="pill red">UC2</span><br><b>Personalised discovery</b><br><span class="stat-label">MUSE · supported by SCOUT (trend), PACE (price)</span></div>
+      <div class="card"><span class="pill red">UC3</span><br><b>Size &amp; fit</b><br><span class="stat-label">TAILOR · supported by GRADE (return reasons)</span></div>
+      <div class="card"><span class="pill red">UC4</span><br><b>Service upsell &amp; monetisation</b><br><span class="stat-label">CONCIERGE · hosted by CARE, approved by SENTRY</span></div>
+      <div class="card"><span class="pill red">UC5</span><br><b>Loyalty &amp; gamification</b><br><span class="stat-label">TALLY · consumes the PERSONA segment</span></div>
+    </div>
+
+    <h3>Commercial model: one capability, three widening rings</h3>
+    <div class="grid g3">
+      <div class="card ring"><span class="pill">Ring 1 · B2C</span><br><b>Free personalisation, paid services</b>
+        <p class="stat-label" style="margin:6px 0 0">Neu.Tail+ and Elite subscriptions sold by CONCIERGE <i>only on explicit consent</i>; free
+          tier funded by conversion and fewer returns.</p></div>
+      <div class="card ring"><span class="pill">Ring 2 · B2B open API</span><br><b>Agents as APIs</b>
+        <p class="stat-label" style="margin:6px 0 0">"Size &amp; Fit as a Service" (TAILOR) and "Segmentation as a Service" (PERSONA), exposed today through
+          the authenticated MCP adapter.</p></div>
+      <div class="card ring"><span class="pill">Ring 3 · B2B2C</span><br><b>White-label platform</b>
+        <p class="stat-label" style="margin:6px 0 0">The whole estate on a retailer's catalogue. The moat is outcome-based pricing on returns via the
+          GRADE→TAILOR loop.</p></div>
+    </div>
+
+    <h3>Scope, stakeholders and constraints</h3>
+    <div class="grid g3">
+      <div class="card"><b>In scope (built)</b><ul class="tight">
+        <li>Lead Orchestrator and 7 Personalisation agents.</li><li>4 supporting agents as thin stubs with real contracts.</li>
+        <li>Agent platform: runtime, policy, audit, gateway, prompts, memory, vector retrieval.</li>
+        <li>Storefront, review console, admin console and an external MCP adapter.</li></ul></div>
+      <div class="card"><b>Stakeholders</b><ul class="tight">
+        <li>Shoppers (loyalty members, new customers).</li><li>Store and service colleagues acting as human reviewers.</li>
+        <li>Merchandising, finance and risk (outcomes, approvals).</li><li>Ring 2/3 partners (API consumers).</li></ul></div>
+      <div class="card"><b>Constraints</b><ul class="tight">
+        <li>Demo scale: runs on one laptop with zero required services.</li><li>Every live dependency (LLM, Redis, Chroma) is optional
+          and has a deterministic fallback.</li><li>All data is synthetic, and no real PII is used.</li>
+        <li>The remaining 6 agents of the 17-agent estate are out of scope.</li></ul></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 2. ARCHITECTURE -->
+  <section id="architecture">
+    <h2><span class="num">2</span>End-to-end solution architecture</h2>
+    <p class="lede">Pick a flow, then click any numbered badge. The diagram zooms to the component and the panel at the
+      bottom explains what happens in that step and why. Use <b>Next/Prev</b> or the ← → keys, or <b>Play</b> to walk it. You can
+      also click any component for its description, scroll to zoom and drag to pan.</p>
+
+    <div class="diagram-frame">
+      <div class="toolbar">
+        <span class="label">Flow</span>
+        <span id="flowTabs"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="prevBtn" title="Previous step (←)">◀ Prev</button>
+        <button class="btn" id="playBtn" title="Auto-play">▶ Play</button>
+        <button class="btn" id="nextBtn" title="Next step (→)">Next ▶</button>
+        <button class="btn" id="fitBtn" title="Show the whole architecture">⤢ Whole view</button>
+      </div>
+      <div class="progress"><div id="progressBar"></div></div>
+      <div class="svg-wrap">
+        <svg id="arch" viewBox="0 0 1600 1065" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Neu.Tail end-to-end solution architecture diagram">
+          <defs>
+            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#E31837" flood-opacity=".45"/>
+            </filter>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#E31837"/>
+            </marker>
+            <marker id="arrowGrey" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#B9B5AB"/>
+            </marker>
+          </defs>
+          <g id="layerBands"></g>
+          <g id="staticLinks"></g>
+          <g id="components"></g>
+          <g id="flowLayer"></g>
+          <g id="badges"></g>
+        </svg>
+        <div class="zoom-hint">scroll to zoom · drag to pan</div>
+      </div>
+      <div class="step-panel" id="stepPanel"></div>
+      <div class="legend">
+        <span><i style="background:var(--channel);border-color:var(--channel-s)"></i>Channels</span>
+        <span><i style="background:var(--exp);border-color:var(--exp-s)"></i>Experience API</span>
+        <span><i style="background:var(--intent);border-color:var(--intent-s)"></i>Intent &amp; context</span>
+        <span><i style="background:var(--orch);border-color:var(--orch-s)"></i>Orchestration</span>
+        <span><i style="background:var(--agent);border-color:var(--agent-s)"></i>Personalisation agents</span>
+        <span><i style="background:var(--stub);border-color:var(--stub-s)"></i>Supporting agents / HITL</span>
+        <span><i style="background:var(--plat);border-color:var(--plat-s)"></i>Agent platform</span>
+        <span><i style="background:var(--data);border-color:var(--data-s)"></i>Data</span>
+        <span><i style="background:var(--ext);border-color:var(--ext-s)"></i>External</span>
+      </div>
+    </div>
+
+    <h3>Architecture principles applied</h3>
+    <div class="grid g4">
+      <div class="card"><b>One chokepoint</b><br><span class="stat-label">Every tool call goes through <code>runtime.invoke()</code>, which does the policy check, binds the customer, validates input, scopes data access and writes the audit entry.</span></div>
+      <div class="card"><b>Identity is never self-declared</b><br><span class="stat-label">The principal comes from the token or API key, or from the runtime when one agent calls another. It never comes from a request body.</span></div>
+      <div class="card"><b>Money moves on consent</b><br><span class="stat-label">Offers are read-only. Commits need an explicit action, pass SENTRY, run in one transaction and are idempotent.</span></div>
+      <div class="card"><b>Degrade, don't fail</b><br><span class="stat-label">LLM, Redis and Chroma are all optional. Each has a deterministic fallback, and every use of a fallback is logged.</span></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 3. NFRs -->
+  <section id="nfr">
+    <h2><span class="num">3</span>Non-functional requirements</h2>
+    <p class="lede">Each NFR shows how the architecture meets it, the evidence from the build, and the gap to production. Demo numbers
+      come from the local build on synthetic data, so treat them as indicative rather than benchmarks.</p>
+    <div class="card" style="padding:0;overflow:hidden">
+    <table>
+      <thead><tr><th style="width:12%">Quality</th><th style="width:22%">Requirement</th><th style="width:30%">How the architecture meets it</th><th style="width:18%">Evidence (as built)</th><th style="width:18%">Production path</th></tr></thead>
+      <tbody>
+        <tr><td><b>Security: identity</b></td><td>No caller can act as another principal or another customer.</td>
+          <td>Shopper token (HMAC-signed, customer-bound) or staff API key resolves to the principal; the runtime switches to the owning agent for nested calls; shopper contexts can't name a different customer.</td>
+          <td><span class="pill green">tested</span> forged <code>caller</code>, cross-customer read and storefront→<code>earn_points</code> all denied (403).</td>
+          <td>OIDC/IdP login, mTLS between services, secrets in a vault.</td></tr>
+        <tr><td><b>Security: authorisation</b></td><td>Least privilege on tools and data.</td>
+          <td>Default-deny tool ACL per contract plus the slide-7 data-domain matrix enforced in the data-access layer; contracts claiming ungranted domains fail at import.</td>
+          <td><span class="pill green">tested</span> <code>DataAccessDenied</code> outside scope / undeclared domain.</td>
+          <td>Externalise to OPA/Rego with the same matrix as data.</td></tr>
+        <tr><td><b>Privacy &amp; consent</b></td><td>PII minimised; marketing needs consent.</td>
+          <td>CARE masks contact data; upsell gated on <code>marketing_consent</code>; audit details redacted (hashed customer IDs, contact fields dropped, lists truncated).</td>
+          <td><span class="pill green">tested</span> no raw ID or email in trace rows; Elena (no consent) gets no offer.</td>
+          <td>DPIA, retention schedules, right-to-erasure job, field-level encryption.</td></tr>
+        <tr><td><b>Financial integrity</b></td><td>No double charge, no lost points, no unauthorised spend.</td>
+          <td>Server-side pricing; pydantic bounds; one DB transaction per commit; idempotency keys; compare-and-set on offers/escalations; ledger <code>UNIQUE(source, ref_id)</code>.</td>
+          <td><span class="pill green">tested</span> 4 concurrent approvals → 1 order; 10 concurrent earns → exact sum; replay → same order.</td>
+          <td>Payment-gateway idempotency, outbox to ERP/ledger.</td></tr>
+        <tr><td><b>Human oversight</b></td><td>Risky charges are reviewed by a person.</td>
+          <td>SENTRY risk score (amount bound, first-time payer, multiple of average order, velocity, tenure) escalates ≥ 0.5 to the review queue; reviewer identity comes from the staff key.</td>
+          <td><span class="pill green">demoed</span> Amara's £90 Elite plan → queue → approve → order + points.</td>
+          <td>Case management integration, SLA alerts, four-eyes for high value.</td></tr>
+        <tr><td><b>Performance</b></td><td>Pages feel instant; a live model is only used where it adds value.</td>
+          <td>Recommendation rows use the deterministic ranker (no model on page load); single-query stock filter; fit profile cached per category in MUSE's loop; candidates capped at 60 before any prompt.</td>
+          <td><span class="pill amber">indicative</span> ~220 ms for a full discovery turn on fallback; seed ~1 s.</td>
+          <td>Streaming responses, response cache, feature store, async event bus.</td></tr>
+        <tr><td><b>Availability &amp; resilience</b></td><td>The journey still works when a dependency is down.</td>
+          <td>Gateway tries providers in order and then a fallback; Redis re-probed after 30 s; Chroma falls back to token overlap; server-side refusal fallback on Opus 5.5.</td>
+          <td><span class="pill green">demoed</span> whole suite and demo run with no keys, Redis or Chroma.</td>
+          <td>Multi-AZ, circuit breakers, health-based routing, chaos tests.</td></tr>
+        <tr><td><b>Scalability</b></td><td>Grow from demo to 820K members.</td>
+          <td>Stateless API; customer-scoped session keys; data behind a domain DAL, so stores can be swapped per domain.</td>
+          <td><span class="pill amber">demo scale</span> SQLite (WAL), single node.</td>
+          <td>Postgres per domain, Redis cluster, managed vector DB, horizontal API pods.</td></tr>
+        <tr><td><b>Observability</b></td><td>Any answer can be explained end to end.</td>
+          <td>Single audit writer with <code>trace_id</code>, kind, latency, model and prompt version, outcome; writes deferred until after the transaction so a rollback never erases them.</td>
+          <td><span class="pill green">tested</span> one trace links segment → retrieval → SCOUT/PACE → TAILOR → model → rank.</td>
+          <td>OpenTelemetry export, dashboards, eval harness on prompt changes.</td></tr>
+        <tr><td><b>AI governance</b></td><td>Prompts and models are governed, swappable and safe.</td>
+          <td>Capability→model map in config; versioned prompt registry with a shared guard prompt; input cleaning; output filters (URLs, unsupported prices, length).</td>
+          <td><span class="pill green">built</span> every model row carries <code>prompt_version</code>.</td>
+          <td>Prompt A/B with offline evals, red-team suite, drift monitoring.</td></tr>
+        <tr><td><b>Maintainability</b></td><td>Agents can change without touching each other.</td>
+          <td>Each agent = contracts + handlers; stubs give real seams for SCOUT/PACE/GRADE/ONEBASKET; orchestrator holds no agent logic.</td>
+          <td><span class="pill green">built</span> 11 agents, 20 tool contracts, one registry.</td>
+          <td>Contract versioning, consumer-driven contract tests.</td></tr>
+        <tr><td><b>Testability &amp; repeatability</b></td><td>Deterministic, reproducible demos and tests.</td>
+          <td>Fixed-seed causal data generator; throwaway test DB; live models disabled under test.</td>
+          <td><span class="pill green">28 tests pass</span> in ~3 s.</td>
+          <td>CI pipeline, load tests, synthetic monitoring.</td></tr>
+        <tr><td><b>Interoperability</b></td><td>Partners can consume agents as APIs (Ring 2).</td>
+          <td>Authenticated MCP adapter exposing read-only contracts; same policy as internal calls.</td>
+          <td><span class="pill green">demoed</span> no key → 401; reads OK; writes denied.</td>
+          <td>API gateway, metering per call, partner tenancy.</td></tr>
+        <tr><td><b>Cost</b></td><td>Pay for intelligence only where it earns its keep.</td>
+          <td>Fast tier for routing and note blending; reasoning tier only for typed search ranking and offer pitches; Opus 5.5 at medium effort.</td>
+          <td><span class="pill amber">by design</span> zero model calls for home-page rows.</td>
+          <td>Per-route effort tuning, prompt caching, cost dashboards.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- ================================================================ 4. ADRs -->
+  <section id="adr">
+    <h2><span class="num">4</span>Architecture decision records</h2>
+    <p class="lede">The significant, hard-to-reverse decisions behind the build. Click a record to expand it.</p>
+    <div id="adrList"></div>
+  </section>
+
+  <!-- ================================================================ 5. CONCLUSION -->
+  <section id="conclusion">
+    <h2><span class="num">5</span>Conclusion summary</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3 style="margin-top:0">What the architecture delivers</h3>
+        <ul class="tight">
+          <li><b>All five functionalities run end to end</b>: personalised discovery, per-customer fit, consent-based upsell with human
+            review, a learning returns loop and gamified loyalty.</li>
+          <li><b>Governance is enforced, not just drawn</b>: one runtime chokepoint, identity the caller can't forge, a tool ACL plus the slide-7
+            data matrix, a redacted audit trail with end-to-end traces.</li>
+          <li><b>Commerce you can trust</b>: server-side pricing, single-transaction commits, idempotency and compare-and-set, all
+            proven under concurrency in tests.</li>
+          <li><b>The business case is measurable</b>: on the causally simulated estate, guided orders return ~14% against a ~35%
+            baseline, the signal behind Ring 2/3 outcome-based pricing.</li>
+          <li><b>Resilient and cheap to run</b>: every live dependency is optional, and model use is targeted to where it adds value.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">What comes next (production path)</h3>
+        <ul class="tight">
+          <li><b>Identity &amp; policy</b>: replace demo login with OIDC, externalise policy to OPA, and keep the same matrix as data.</li>
+          <li><b>Data spine</b>: move to Postgres per domain, a real-time CDP/feature store and a managed vector DB, with an event bus for GRADE/SCOUT signals.</li>
+          <li><b>Deepen the stubs</b>: GRADE vision grading (vision tier already mapped), live SCOUT trend, PACE price pacing in the ±5% band.</li>
+          <li><b>AI assurance</b>: an offline eval set per prompt, prompt A/B tests, red-teaming, and OpenTelemetry export of the existing traces.</li>
+          <li><b>Ring 2 go-to-market</b>: API gateway, per-call metering and partner tenancy on top of the MCP adapter.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px;background:var(--red-tint);border-color:#F3C9CF">
+      <b>Bottom line:</b> the Personalisation Assistant is built once on a governed agent platform. It understands each customer, sizes
+      them before they buy and only charges with consent. It is safe to extend from our own 820K members (Ring 1) to partners as
+      APIs (Ring 2) and to a white-label platform (Ring 3), and the GRADE→TAILOR returns loop is the differentiator a software-only
+      rival can't copy.
+    </div>
+  </section>
+  <footer>Neu.Tail · Team 5 — Condor Galaxy · Source of truth: <code>docs/ARCHITECTURE.md</code>, code in <code>neutail/</code> · All data synthetic</footer>
+</main>
+
+<script>
+/* ======================================================================= MODEL */
+const BANDS = [
+  { y: 20,  h: 110, label: "Channels",                       fill: "#F6F9FD" },
+  { y: 145, h: 110, label: "Experience API",                 fill: "#F7F8FD" },
+  { y: 270, h: 110, label: "Intent sensing & context",       fill: "#FAF8FD" },
+  { y: 395, h: 110, label: "Orchestration",                  fill: "#FFF8F8" },
+  { y: 520, h: 200, label: "Agent mesh — Personalisation Assistant", fill: "#FFFCF7" },
+  { y: 735, h: 200, label: "Enterprise LLM & agent platform", fill: "#F6FBF8" },
+  { y: 950, h: 105, label: "Data universe",                  fill: "#F5F8F8" },
+];
+const T = { channel: ["--channel", "--channel-s"], exp: ["--exp", "--exp-s"], intent: ["--intent", "--intent-s"],
+  orch: ["--orch", "--orch-s"], agent: ["--agent", "--agent-s"], stub: ["--stub", "--stub-s"],
+  plat: ["--plat", "--plat-s"], data: ["--data", "--data-s"], ext: ["--ext", "--ext-s"] };
+const a = (i) => 110 + i * 197;
+const C = {
+  storefront: { x: 110, y: 46, w: 430, h: 70, t: "channel", title: "Retail storefront", sub: "Streamlit · shopper persona login · real product photos",
+    desc: "Shopper-facing web experience: personalised home rows, search, product pages with sizes, fit check, stylist offers, My orders with returns, loyalty and rewards. It's a client of the Experience API only.", files: "apps/storefront/streamlit_app.py" },
+  console: { x: 560, y: 46, w: 430, h: 70, t: "channel", title: "Reviewer & admin console", sub: "Human review queue · outcomes · traces · policy",
+    desc: "Staff tabs authenticated with API keys: reviewers resolve SENTRY escalations; admins see business outcomes, follow traces, inspect the enforced data matrix, contracts, prompts, models and the redacted audit.", files: "apps/storefront/streamlit_app.py (Human review / Admin tabs)" },
+  mcpclient: { x: 1010, y: 46, w: 480, h: 70, t: "ext", title: "External MCP clients · Ring-2 partners", sub: "Claude Desktop / Code · partner systems",
+    desc: "External consumers of agents-as-APIs (e.g. Size & Fit as a Service). They connect to the MCP adapter with a Bearer key and act as the read-only external_mcp principal.", files: "scripts/demo_mcp_client.py" },
+  api: { x: 110, y: 171, w: 620, h: 70, t: "exp", title: "Experience API (FastAPI :8000)", sub: "/chat · /recommendations · /orders · /offers · /fit · /returns · /loyalty",
+    desc: "Transport only: resolves the principal from authentication, builds a Context with a fresh trace_id, and calls the orchestrator or runtime.invoke(). It maps errors to HTTP codes (403 policy, 400 invalid, 404 missing, 429 rate limit).", files: "neutail/api/app.py" },
+  auth: { x: 750, y: 171, w: 380, h: 70, t: "exp", title: "Auth → principal", sub: "HMAC shopper token · staff X-API-Key · MCP Bearer",
+    desc: "Shopper tokens bind the customer_id server-side (issued after ONEBASKET resolves identity). Staff keys map to human_reviewer, admin or external_mcp. Nothing in a request body can choose identity.", files: "neutail/api/auth.py" },
+  assets: { x: 1150, y: 171, w: 340, h: 70, t: "exp", title: "Product imagery /assets", sub: "63 Unsplash photos, matched to product type",
+    desc: "Static product photography served locally (offline-safe). Each of the 1,096 SKUs maps to a photo of its product type, and its colour attribute comes from the photo.", files: "assets/products/ · CREDITS.md" },
+  intent: { x: 110, y: 296, w: 620, h: 70, t: "intent", title: "Intent sensing & entities", sub: "discovery · fit · service · loyalty · accept_offer · unknown",
+    desc: "Classifies each clause into intents plus entities (category, ordinal, SKU) using the fast-tier model, with a word-boundary keyword and entity matcher as the deterministic fallback.", files: "neutail/orchestration/intents.py · prompts/orchestrator_intent.yaml" },
+  context: { x: 750, y: 296, w: 740, h: 70, t: "intent", title: "Context object (per turn)", sub: "principal · customer · session · trace_id · segment · last_results · pending_offer",
+    desc: "One object passed from agent to agent (deck slide 8). Loaded from short-term memory at the start of a turn and saved at the end; keys are scoped by customer and session.", files: "neutail/context.py" },
+  orchestrator: { x: 110, y: 421, w: 880, h: 70, t: "orch", title: "Lead Orchestrator", sub: "route · decompose (dependency order) · confidence gate · hold context",
+    desc: "Loads context, classifies, publishes PERSONA's segment once, dispatches intents in dependency order (discovery before fit), composes and saves. It holds no agent logic; every call is runtime.invoke() as lead_orchestrator.", files: "neutail/orchestration/orchestrator.py" },
+  composer: { x: 1010, y: 421, w: 480, h: 70, t: "orch", title: "Response Composer", sub: "merges multi-intent results into one reply",
+    desc: "A plain module, not an agent: it merges per-intent results into one composite reply. It touches no data and calls no model.", files: "neutail/orchestration/response_composer.py" },
+  persona: { x: a(0), y: 546, w: 180, h: 72, t: "agent", title: "PERSONA", sub: "UC1 · segment & micro-segment",
+    desc: "Scores tier, tenure, 90-day spend and recency → segment (affluent/value), micro-segment, confidence, signals and preference tags. Publishes them onto the context.", files: "agents/persona.py" },
+  muse: { x: a(1), y: 546, w: 180, h: 72, t: "agent", title: "MUSE", sub: "UC2 · discovery ranking",
+    desc: "Semantic candidates → in-stock filter → SCOUT trend & PACE price → TAILOR risk per category → reasoning model or deterministic ranker → diversity cap. Logs searches vs impressions separately.", files: "agents/muse.py · prompts/muse_rank.yaml" },
+  tailor: { x: a(2), y: 546, w: 180, h: 72, t: "agent", title: "TAILOR", sub: "UC3 · fit & return risk",
+    desc: "Per-customer return risk shrunk toward the category baseline, multiplied by the estate's measured guidance effect. Size direction comes from GRADE reason codes; optional note blended by the fast model.", files: "agents/tailor.py" },
+  care: { x: a(3), y: 546, w: 180, h: 72, t: "agent", title: "CARE", sub: "UC4 · service, hosts CONCIERGE",
+    desc: "Masks PII, gates upsell on tier and marketing consent, serves order history for self-service returns.", files: "agents/care.py" },
+  concierge: { x: a(4), y: 546, w: 180, h: 72, t: "agent", title: "CONCIERGE", sub: "UC4 · offers & commits",
+    desc: "compose_offer (read-only), accept_offer, commit_order, resolve_escalation. The only writer of orders: single transaction, idempotency keys, compare-and-set.", files: "agents/concierge.py" },
+  sentry: { x: a(5), y: 546, w: 180, h: 72, t: "agent", title: "SENTRY", sub: "UC4 · risk & approval",
+    desc: "Risk score from amount bound, first-time payer, multiple of average order, velocity and tenure. Approves below 0.5, otherwise writes an idempotent pending escalation.", files: "agents/sentry.py" },
+  tally: { x: a(6), y: 546, w: 180, h: 72, t: "agent", title: "TALLY", sub: "UC5 · points, tiers, badges",
+    desc: "Append-only ledger (idempotent per business event), tier upgrades from year-to-date spend, bounded redemption, badges computed from real behaviour.", files: "agents/tally.py" },
+  onebasket: { x: a(0), y: 632, w: 180, h: 72, t: "stub", title: "ONEBASKET", sub: "identity (stub)",
+    desc: "Resolves a login handle (customer ID or email) to one customer identity before a token is issued.", files: "agents/stubs.py" },
+  scout: { x: a(1), y: 632, w: 180, h: 72, t: "stub", title: "SCOUT", sub: "trend signal (stub)",
+    desc: "Trend flags per SKU plus estate-wide 7-day category momentum from behavioural events.", files: "agents/stubs.py" },
+  pace: { x: a(2), y: 632, w: 180, h: 72, t: "stub", title: "PACE", sub: "price context ±5% (stub)",
+    desc: "Current price, markdown, discount and the ±5% guardrail band per SKU. It's also the price source for orders.", files: "agents/stubs.py" },
+  grade: { x: a(3), y: 632, w: 180, h: 72, t: "stub", title: "GRADE", sub: "returns grading (stub)",
+    desc: "Records a graded return linked to its order. Fit reasons feed TAILOR; the rest go to RECLAIM recovery.", files: "agents/stubs.py" },
+  hitl: { x: a(4), y: 632, w: 574, h: 72, t: "stub", title: "Human-in-the-loop review queue", sub: "escalations · reviewer decision completes or closes the paused commit",
+    desc: "SENTRY writes pending escalations here. A reviewer's approval runs the commit (order, stock, points) in one transaction; compare-and-set prevents double approval.", files: "data/escalations.py · concierge.resolve_escalation" },
+  runtime: { x: 110, y: 761, w: 260, h: 72, t: "plat", title: "Agent runtime", sub: "runtime.invoke() — the one path",
+    desc: "Contract lookup → policy → customer binding → input validation → handler runs as the owning agent inside a data scope and an audit span.", files: "platform/runtime.py · platform/contracts.py" },
+  policy: { x: 390, y: 761, w: 260, h: 72, t: "plat", title: "Policy & guardrails", sub: "tool ACL · data matrix · rate limits",
+    desc: "Default-deny allow-lists per contract, the slide-7 agent×domain matrix (mode and method), and per-actor rate limits that are tighter for side effects.", files: "platform/policy.py" },
+  audit: { x: 670, y: 761, w: 260, h: 72, t: "plat", title: "Audit & observability", sub: "trace_id · latency · model · prompt · redacted",
+    desc: "A single writer for tool, model, retrieval and human events. Writes are deferred until after the transaction so rollbacks never erase evidence, and details are redacted.", files: "platform/audit.py" },
+  gateway: { x: 950, y: 761, w: 260, h: 72, t: "plat", title: "Model gateway", sub: "capability → model · provider fallback",
+    desc: "reasoning → claude-opus-5-5 (medium effort, server-side refusal fallback), fast → claude-haiku-4-5, vision → claude-opus-5-5. Tries OpenRouter, then Anthropic, then the deterministic fallback.", files: "platform/gateway.py · config/models.json" },
+  prompts: { x: 1230, y: 761, w: 260, h: 72, t: "plat", title: "Prompt service", sub: "versioned YAML · guard prompt · filters",
+    desc: "Versioned per-agent prompts with a shared guard prompt prepended at run time; input cleaning and output filters (no URLs, no unsupported prices, length caps).", files: "platform/prompts.py · neutail/prompts/" },
+  session: { x: 110, y: 847, w: 400, h: 72, t: "plat", title: "Short-term memory", sub: "Redis (TTL) · SQLite fallback · customer-scoped",
+    desc: "Holds the context object between turns, keyed by customer and session. Redis with a 30-minute TTL when reachable, re-probed after failures; SQLite otherwise.", files: "platform/session_store.py" },
+  vector: { x: 530, y: 847, w: 400, h: 72, t: "plat", title: "Vector retrieval", sub: "Chroma cosine · token-overlap fallback · fingerprint reindex",
+    desc: "Semantic catalogue search (local MiniLM embeddings, cosine score = 1 − distance), rebuilt when the catalogue fingerprint changes. Audited as kind=retrieval.", files: "platform/vector_store.py" },
+  providers: { x: 950, y: 847, w: 540, h: 72, t: "ext", title: "Model providers (external)", sub: "Anthropic API · OpenRouter",
+    desc: "Foundation models reached only through the gateway. Agents never hold provider credentials or model IDs.", files: "config/models.json" },
+  dal: { x: 110, y: 976, w: 560, h: 66, t: "data", title: "Data-access layer (per domain)", sub: "crm · loyalty · catalogue · inventory · transactional · escalations · returns · behavioural · fit",
+    desc: "Agents never write SQL against tables they don't own. Each function is tagged with domain and mode; calls outside the running contract's grant raise DataAccessDenied.", files: "neutail/data/" },
+  sqlite: { x: 690, y: 976, w: 420, h: 66, t: "data", title: "System of record (SQLite, WAL)", sub: "unit of work · idempotency keys · ledger · indexes",
+    desc: "The demo's system of record for every domain. db.transaction() publishes one connection so nested tool calls join a single commit or rollback.", files: "neutail/db.py · neutail/schema.sql" },
+  chroma: { x: 1130, y: 976, w: 170, h: 66, t: "data", title: "Chroma", sub: "vectors (optional)",
+    desc: "Embedded vector database persisted under data/chroma; optional.", files: "data/chroma/" },
+  redis: { x: 1320, y: 976, w: 170, h: 66, t: "data", title: "Redis", sub: "sessions (optional)",
+    desc: "Session memory with TTL; optional.", files: "REDIS_URL" },
+};
+
+/* Flows: each step → components it touches (first = where the badge sits) */
+const FLOWS = [
+  { id: "discovery", name: "① Discovery → Fit", steps: [
+    { c: ["storefront", "auth", "onebasket"], title: "Shopper signs in", route: "Storefront → /auth/login → ONEBASKET",
+      actions: ["The shopper picks a persona (demo login); the storefront calls POST /auth/login.", "ONEBASKET's resolve_identity maps the handle to one customer_id.",
+        "The API issues an HMAC-signed token that binds that customer server-side for the whole session."],
+      why: "From here on, no request body can choose whose data is touched.", files: "api/auth.py · agents/stubs.py" },
+    { c: ["api", "storefront"], title: "Message arrives at the Experience API", route: "POST /chat {session_id, message} + Bearer token",
+      actions: ["Example message: \"show me blazers and check my fit for jeans\".", "The API verifies the token, builds a Context (principal=lead_orchestrator, customer bound, role=shopper).",
+        "A fresh trace_id is minted and set for every audit write in this request."],
+      why: "One trace_id lets you follow every downstream hop later.", files: "api/app.py · context.py" },
+    { c: ["orchestrator", "context", "session"], title: "Orchestrator restores context", route: "Lead Orchestrator → short-term memory",
+      actions: ["Loads the context object for (customer, session) from Redis or SQLite.", "Restores last_results, pending_offer and the published segment.",
+        "Another customer reusing the same session_id gets nothing back, because keys are customer-scoped."],
+      why: "Follow-ups like \"the second one\" resolve without restating anything.", files: "orchestration/orchestrator.py · platform/session_store.py" },
+    { c: ["intent", "gateway", "prompts", "providers"], title: "Intent & entity classification", route: "Intent sensing → Model gateway (fast tier)",
+      actions: ["Prompt orchestrator_intent@3 with the guard prompt goes to claude-haiku-4-5 through the gateway.", "If there's no key or the output is unusable, a word-boundary keyword and entity matcher is used instead (logged as fallback).",
+        "Result: [discovery · category=jacket], [fit · category=jeans]."],
+      why: "Entities let fit size the category the customer named, not whatever was shown first.", files: "orchestration/intents.py · platform/gateway.py" },
+    { c: ["orchestrator"], title: "Confidence gate & decomposition", route: "Lead Orchestrator",
+      actions: ["If the top intent is unknown or confidence is below 0.5, it asks a clarifying question instead of guessing.", "Qualifying intents are ordered by dependency: discovery → fit → loyalty → service → accept.",
+        "PERSONA's segment will be published once for the whole turn."],
+      why: "This is the reflection / self-check pattern: don't route blind.", files: "orchestration/orchestrator.py" },
+    { c: ["persona", "runtime", "policy", "dal"], title: "PERSONA publishes the segment", route: "runtime.invoke(get_customer_segment)",
+      actions: ["Runtime: ACL check (lead_orchestrator allowed), customer bound from the context, input validated.", "Handler runs as persona_agent inside a data scope of crm, loyalty, behavioural and transactional (read only).",
+        "Returns segment=affluent, micro_segment=loyal_premium, confidence, signals and preference tags."],
+      why: "Downstream agents read the context instead of re-deriving the segment.", files: "agents/persona.py · platform/runtime.py" },
+    { c: ["muse", "vector", "dal"], title: "MUSE retrieves candidates", route: "MUSE → vector retrieval → inventory",
+      actions: ["Semantic search over the catalogue (Chroma cosine or token-overlap fallback), audited as retrieval.", "Filtered to the requested category (jacket) and to in-stock SKUs in one query.",
+        "The index is rebuilt automatically if the catalogue fingerprint has changed."],
+      why: "Relevance is decided at retrieval, not left to the ranker.", files: "agents/muse.py · platform/vector_store.py" },
+    { c: ["scout", "pace", "tailor", "muse"], title: "Evaluator loop: trend, price, fit risk", route: "MUSE → SCOUT · PACE · TAILOR (as muse_agent)",
+      actions: ["SCOUT: trending flags and 7-day category momentum.", "PACE: price, markdown, ±5% band, low-stock flag.",
+        "TAILOR: personal return risk per category (once per category, not per SKU)."],
+      why: "Nested calls go out as muse_agent because the runtime switched identity, not because MUSE named itself.", files: "agents/stubs.py · agents/tailor.py" },
+    { c: ["muse", "gateway", "prompts"], title: "Ranking, filtering, diversity", route: "MUSE → reasoning tier (claude-opus-5-5) or deterministic ranker",
+      actions: ["Up to 60 pre-filtered candidates go to prompt muse_rank@4; reasons pass the output filter.", "Fallback ranker: tier fit, semantic score, engagement, trend, momentum, sale, newness, minus return risk.",
+        "Diversity cap, then 'search' events are logged (typed queries only)."],
+      why: "used_live_model reports whether the results really came from the model.", files: "agents/muse.py" },
+    { c: ["tailor", "grade", "dal"], title: "TAILOR sizes jeans for this customer", route: "runtime.invoke(get_fit_profile, category=jeans)",
+      actions: ["Reads orders, GRADE return reasons and the fit profile for jeans.", "too_small returns → runs small; kept size L → recommend L.",
+        "Risk = shrunk personal rate × measured guidance effect ≈ 16% vs ≈ 36% category baseline."],
+      why: "This is the GRADE→TAILOR loop the outcome-based pricing rests on.", files: "agents/tailor.py · data/fit.py" },
+    { c: ["composer", "session", "api", "storefront"], title: "Compose, remember, reply", route: "Response Composer → memory → API → storefront",
+      actions: ["The composite reply merges discovery and fit parts.", "last_results is saved for follow-ups.",
+        "The storefront renders photo cards with reasons, personal return risk and the fit panel."],
+      why: "The shopper gets one coherent answer to a two-part question.", files: "orchestration/response_composer.py · apps/storefront/streamlit_app.py" },
+    { c: ["audit", "console"], title: "Every hop is evidence", route: "Audit → Admin trace view",
+      actions: ["~14 audit rows share the trace_id: model routing, segment, retrieval, SCOUT, PACE, TAILOR ×N, ranking.", "Each row carries kind, latency, model, prompt version and outcome; details are redacted.",
+        "Admin → Trace shows the whole journey."],
+      why: "Any recommendation can be explained after the fact.", files: "platform/audit.py · GET /admin/traces/{id}" },
+  ]},
+  { id: "upsell", name: "② Consent-based upsell & HITL", steps: [
+    { c: ["storefront", "api", "orchestrator"], title: "Customer asks for a stylist", route: "POST /chat \"I'd like a stylist\"",
+      actions: ["Classified as service; the segment is published onto the context.", "The orchestrator calls CARE and CONCIERGE through the runtime."],
+      why: "Asking a question must never cost money.", files: "orchestration/orchestrator.py" },
+    { c: ["care", "dal"], title: "CARE checks eligibility & consent", route: "runtime.invoke(resolve_contact)",
+      actions: ["Contact masked (PII & consent policy).", "Eligible only if tier is Gold or Platinum AND marketing_consent is on file.",
+        "Elena (no consent) stops here with a clear reason."],
+      why: "This is consent by design, not by convention.", files: "agents/care.py" },
+    { c: ["concierge", "gateway", "prompts"], title: "CONCIERGE composes the offer (read-only)", route: "runtime.invoke(compose_offer)",
+      actions: ["Plan and price come from the plans table: Neu.Tail+ £60, Elite £90 (Platinum).", "The pitch uses concierge_offer@3 on the reasoning tier, then the output filter strips any invented price.",
+        "An offer row (open, 30-minute expiry) is written; pending_offer goes into context. Nothing is charged."],
+      why: "The price can never come from the caller.", files: "agents/concierge.py" },
+    { c: ["storefront", "api"], title: "Explicit customer action", route: "POST /offers/{id}/accept + idempotency key",
+      actions: ["The customer clicks Subscribe (or says \"yes, sign me up\").", "The idempotency key is reused on retries and double-clicks.",
+        "The offer must belong to this customer, still be open and not have expired."],
+      why: "Only an explicit act moves money.", files: "api/app.py · concierge._accept_offer" },
+    { c: ["sentry", "dal"], title: "SENTRY scores the charge", route: "runtime.invoke(check_payment_policy) as concierge_agent",
+      actions: ["Score = amount over bound (+0.5), first-time payer (+0.3), over 3× average order (+0.25), velocity (+0.25), new account (+0.15).", "Below 0.5 → approve. At or above 0.5 → idempotent pending escalation.",
+        "Priya £60 → approved; Amara £90 Elite → escalated."],
+      why: "Risk is scored, not compared against one hard-coded number.", files: "agents/sentry.py" },
+    { c: ["concierge", "tally", "sqlite"], title: "Approved: one atomic commit", route: "db.transaction(): offer CAS → order → TALLY ledger",
+      actions: ["The offer moves open → accepted by compare-and-set; the order is inserted with its idempotency key.", "TALLY earn_points: a ledger row (UNIQUE per order) and an atomic balance update; tier upgrade if spend qualifies.",
+        "All of it commits or rolls back together."],
+      why: "No order without points, no points without an order, no double charge.", files: "agents/concierge.py · agents/tally.py · db.py" },
+    { c: ["hitl", "console"], title: "Escalated: human review queue", route: "Reviewer console → GET /escalations (X-API-Key)",
+      actions: ["The reviewer sees amount, risk score, reasons and product image.", "The customer sees \"a colleague will confirm this shortly\" and the offer is pending_review.",
+        "Reviewer identity comes from the staff key, not the request."],
+      why: "A human stays in control of risky spend.", files: "api/app.py · apps/storefront/streamlit_app.py" },
+    { c: ["hitl", "concierge", "tally", "sqlite"], title: "Reviewer decides", route: "runtime.invoke(resolve_escalation)",
+      actions: ["Compare-and-set pending → approved, then order, stock (for products), offer → accepted, and points in one transaction.", "A second concurrent approval fails cleanly (tested with 4 threads → 1 order).",
+        "Deny closes the escalation and declines the offer; nothing is charged."],
+      why: "HITL keeps the same integrity guarantees as the automated path.", files: "agents/concierge.py" },
+    { c: ["audit", "console"], title: "Outcome recorded", route: "Audit (kind=human) → Admin outcomes",
+      actions: ["The decision is audited with the reviewer principal.", "Admin shows offers composed and accepted, and pending, approved and denied escalations."],
+      why: "This feeds the Ring 1 commercial KPIs.", files: "platform/audit.py · reporting.py" },
+  ]},
+  { id: "loop", name: "③ Returns loop, loyalty & Ring-2 API", steps: [
+    { c: ["storefront", "care"], title: "Customer opens My orders", route: "GET /orders → CARE order_history",
+      actions: ["Orders and subscriptions with photos, sizes and return status."],
+      why: "Self-service is the first step of the learning loop.", files: "agents/care.py" },
+    { c: ["grade", "dal", "sqlite"], title: "Return graded by GRADE", route: "POST /returns → record_return",
+      actions: ["Validates that the order belongs to the customer and hasn't already been returned.", "Writes the return linked to its order_id with reason (e.g. too_small) and condition grade.",
+        "Fit reasons feed TAILOR; others feed RECLAIM recovery."],
+      why: "The return reason becomes structured, reusable signal.", files: "agents/stubs.py · data/returns.py" },
+    { c: ["tailor", "dal"], title: "TAILOR learns", route: "get_fit_profile recomputed on next request",
+      actions: ["The reason codes shift size direction; personal risk is re-shrunk to the baseline.", "Guidance effect = guided ÷ baseline return rate, measured from estate history (≈0.4)."],
+      why: "Prevention, not just processing: the next order is sized right.", files: "agents/tailor.py · data/fit.py" },
+    { c: ["storefront", "tailor"], title: "Next product page pre-selects the size", route: "POST /fit {sku} → size picker",
+      actions: ["The recommended size is pre-selected; the fit-check event is logged (it counts toward the Fit Pro badge).", "An optional free-text note is blended by the fast model or a template."],
+      why: "Guidance appears at the moment of decision.", files: "apps/storefront/streamlit_app.py" },
+    { c: ["concierge", "pace", "sentry", "sqlite"], title: "Purchase with integrity", route: "POST /orders → commit_order",
+      actions: ["Price from PACE, size must exist, quantity bounded 1–10.", "SENTRY approves, then stock decrement, order and points run in one transaction.",
+        "A replay with the same key returns the original order."],
+      why: "Server-side pricing and atomic stock.", files: "agents/concierge.py" },
+    { c: ["tally", "storefront"], title: "Loyalty that engages", route: "GET /loyalty · POST /loyalty/redeem",
+      actions: ["Tier progress, badges (Explorer, Fit Pro, On a roll, Keeper).", "Sam's £214 purchase upgrades him to Gold.",
+        "Redemption is bounded, can't overdraw and is idempotent per click."],
+      why: "UC5 is a real ledger, not a counter.", files: "agents/tally.py" },
+    { c: ["console", "audit", "sqlite"], title: "The outcome becomes measurable", route: "GET /admin/outcomes",
+      actions: ["Return rate: ≈35% baseline vs ≈14% after guidance (temporal split by order date).", "Engagement → purchase uses active engagement only; impressions are counted separately."],
+      why: "This is the evidence for outcome-based pricing (Ring 2/3).", files: "reporting.py" },
+    { c: ["mcpclient", "policy", "tailor"], title: "Partner consumes Size & Fit as a Service", route: "MCP adapter (Bearer key) → external_mcp principal",
+      actions: ["The partner calls get_fit_profile / get_customer_segment read-only.", "Write tools and self-declared callers are denied by the same policy engine."],
+      why: "The Ring 2 API rides on the same governed runtime.", files: "transports/mcp_server.py" },
+  ]},
+];
+
+const ADRS = [
+  { id: "ADR-001", t: "One runtime chokepoint with runtime-bound identity", s: "Accepted",
+    c: "The previous build let callers self-declare identity (\"caller\": \"lead_orchestrator\"), which made the allow-lists meaningless.",
+    d: "Every tool call goes through runtime.invoke(ctx, tool). The principal comes from authentication; nested calls run as the contract's owning agent.",
+    k: "Policy and audit become unconditional. Agents can't choose their identity, and slightly more ceremony is needed for staff tooling (API keys).", alt: "Signed per-agent JWTs (heavier for a single-process demo)." },
+  { id: "ADR-002", t: "Two-layer policy: tool ACL + slide-7 data-domain matrix", s: "Accepted",
+    c: "Agents read any table directly, so the deck's data-universe matrix was only drawn, not enforced.",
+    d: "Default-deny tool allow-lists plus a per-agent domain/mode/method matrix enforced by a domain data-access layer; contracts are validated at import.",
+    k: "Least privilege is provable in tests. Adding a domain to an agent is an explicit, reviewable change.", alt: "Database roles per agent (no per-tool granularity in SQLite)." },
+  { id: "ADR-003", t: "Money moves only on explicit customer action", s: "Accepted",
+    c: "A styling question auto-committed a paid subscription.",
+    d: "compose_offer is read-only; accept_offer, commit_order and resolve_escalation are the only commits; SENTRY scores every charge; risky ones go to humans.",
+    k: "Consent and auditability are built in. One extra click in the journey, which is intended.", alt: "Implicit acceptance via chat sentiment (rejected: not consent)." },
+  { id: "ADR-004", t: "Unit of work + idempotency keys + compare-and-set", s: "Accepted",
+    c: "Order and points were separate transactions; double-clicks duplicated orders; reviewers could race.",
+    d: "db.transaction() shares one connection across nested tool calls; UNIQUE idempotency keys; CAS on offer/escalation state; ledger UNIQUE(source, ref_id).",
+    k: "Exactly-once effects under concurrency, proven in tests. Needs an outbox/saga when domains split across services.", alt: "Distributed saga (overkill at demo scale)." },
+  { id: "ADR-005", t: "MCP as the authenticated external surface; direct calls inside", s: "Accepted",
+    c: "Internal calls made an in-process MCP round trip, making mcp a hard dependency, while the external server had no auth.",
+    d: "Agents invoke contracts directly through the runtime; the MCP adapter exposes them externally behind a Bearer key as the read-only external_mcp principal.",
+    k: "Fewer moving parts and a secure Ring 2 API. Internal traffic is not 'literally MCP', a deliberate trade.", alt: "Keep internal MCP behind a flag." },
+  { id: "ADR-006", t: "Capability-based model gateway with deterministic fallbacks", s: "Accepted",
+    c: "Different providers resolved the same tier to different model generations; prompts were hard-coded.",
+    d: "config/models.json maps capability → model per provider (reasoning/vision claude-opus-5-5 at medium effort with server-side refusal fallback, fast claude-haiku-4-5). Every caller supplies a deterministic fallback.",
+    k: "Vendor-neutral, swappable by config, never down because a model is. OpenRouter slugs must be verified.", alt: "SDK calls inside each agent (vendor lock-in, no governance)." },
+  { id: "ADR-007", t: "Versioned prompt registry with shared guard prompt and output filters", s: "Accepted",
+    c: "The deck requires governed, versioned prompts; customer text flowed straight into prompts.",
+    d: "YAML prompts with versions; a guard prompt prepended at run time; input cleaning; output filters for URLs, unsupported amounts and length; the version is recorded on every call.",
+    k: "Prompt changes are reviewable and traceable. An eval harness is still needed before changes ship.", alt: "Prompt management SaaS (deferred)." },
+  { id: "ADR-008", t: "Two-tier memory with a customer-scoped context object", s: "Accepted",
+    c: "Session keys weren't scoped to a customer; Redis availability latched on the first failure.",
+    d: "Short-term: one context object per (customer, session) in Redis with TTL, falling back to SQLite, re-probed after 30 s. Long-term: durable domain tables.",
+    k: "Follow-ups work and leakage between customers is impossible. Cross-device continuity depends on ONEBASKET.", alt: "Client-held session state (tamperable)." },
+  { id: "ADR-009", t: "Embedded vector retrieval with fallback and fingerprint reindex", s: "Accepted",
+    c: "The index was L2 while documented as cosine, and never refreshed after seeding.",
+    d: "Chroma collection with hnsw:space=cosine (score = 1 − distance) or a token-overlap index; rebuilt when the catalogue fingerprint changes; admin reindex endpoint.",
+    k: "Correct scores and a fresh index. The fallback is cruder; thresholds are per backend.", alt: "Managed vector DB (production path)." },
+  { id: "ADR-010", t: "Separate impressions from engagement", s: "Accepted",
+    c: "Every displayed recommendation was logged as a 'search', so recommendations boosted their own categories.",
+    d: "Recommendation grids log 'impression'; only search, browse and cart count as engagement for boosts and conversion metrics.",
+    k: "No self-reinforcing loop, honest conversion KPI.", alt: "Decay weighting (still biased)." },
+  { id: "ADR-011", t: "Single redacted audit writer, deferred after commit", s: "Accepted",
+    c: "Three audit writers, no trace correlation, raw PII in details, failures not logged.",
+    d: "One writer with trace_id, kind, latency, model, prompt version and outcome; redaction before write; rows flushed after the transaction ends.",
+    k: "End-to-end explainability without leaking PII. Audit isn't in the same transaction, so a crash can lose the last rows.", alt: "Write-ahead in the same transaction (lost on rollback)." },
+  { id: "ADR-012", t: "TAILOR risk = Bayesian shrinkage × measured guidance effect", s: "Accepted",
+    c: "Guided risk was a hard-coded 0.12 and return reasons were ignored.",
+    d: "Personal returns/orders shrunk toward the category baseline (K=4), multiplied by the estate's measured guided/baseline ratio when GRADE reasons give a size direction; SKU-level adjustment with enough history.",
+    k: "Explainable, data-derived risk that improves as returns are graded. Needs volume to stabilise.", alt: "ML fit model (future, once GRADE vision exists)." },
+  { id: "ADR-013", t: "Synthetic causal seed with local product photography", s: "Accepted",
+    c: "Demos need repeatable, realistic data and a credible retail look, with no real PII.",
+    d: "A fixed-seed generator where wrong sizes cause fit returns and guidance prevents them; six purpose-built personas; 63 Unsplash-licensed photos matched to product type and colour.",
+    k: "Repeatable demos whose KPIs emerge from the process. The data is synthetic and must never be presented as real performance.", alt: "Anonymised production extract (privacy risk)." },
+];
+
+/* ======================================================================= RENDER */
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("arch");
+const el = (tag, attrs = {}, parent) => { const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// bands + planes
+const bandsG = document.getElementById("layerBands");
+BANDS.forEach(b => {
+  el("rect", { x: 92, y: b.y, width: 1416, height: b.h, rx: 12, fill: b.fill, stroke: "#E5E2DA" }, bandsG);
+  const t = el("text", { x: 108, y: b.y + 17, class: "band-label" }, bandsG); t.textContent = b.label;
+});
+[["Security · Policy-as-code · PII & consent · Audit", 14], ["Evals · Observability · Traces · Cost", 1528]].forEach(([label, x]) => {
+  el("rect", { x, y: 20, width: 58, height: 1035, rx: 12, fill: x < 100 ? "#FCEBEB" : "#E9F5EE", stroke: x < 100 ? "#F3C9CF" : "#BFDCCB" }, bandsG);
+  const t = el("text", { x: x + 34, y: 537, class: "plane-text", transform: `rotate(-90 ${x + 34} 537)`, "text-anchor": "middle" }, bandsG);
+  t.textContent = label.toUpperCase();
+});
+
+// static links (layer to layer)
+const links = [["storefront", "api"], ["console", "api"], ["mcpclient", "runtime", "side"], ["api", "auth", "h"], ["api", "orchestrator"],
+  ["orchestrator", "intent"], ["orchestrator", "context"], ["orchestrator", "composer", "h"], ["orchestrator", "muse"], ["orchestrator", "persona"],
+  ["orchestrator", "concierge"], ["muse", "tailor", "h"], ["concierge", "sentry", "h"], ["concierge", "tally", "h2"], ["sentry", "hitl"],
+  ["runtime", "dal"], ["gateway", "providers"], ["dal", "sqlite", "h"]];
+const linksG = document.getElementById("staticLinks");
+const center = (id) => { const c = C[id]; return { x: c.x + c.w / 2, y: c.y + c.h / 2 }; };
+links.forEach(([f, t, mode]) => {
+  const A = C[f], B = C[t];
+  let x1, y1, x2, y2;
+  if (mode === "h" || mode === "h2") { x1 = A.x + A.w; y1 = A.y + A.h / 2 + (mode === "h2" ? 18 : 0); x2 = B.x; y2 = B.y + B.h / 2 + (mode === "h2" ? 18 : 0); }
+  else if (mode === "side") { x1 = A.x + A.w - 30; y1 = A.y + A.h; x2 = B.x + B.w; y2 = B.y + 10; }
+  else { const a1 = center(f), b1 = center(t); x1 = Math.min(Math.max(b1.x, A.x + 20), A.x + A.w - 20); y1 = A.y + A.h; x2 = Math.min(Math.max(x1, B.x + 20), B.x + B.w - 20); y2 = B.y;
+    if (B.y < A.y) { y1 = A.y; y2 = B.y + B.h; } }
+  if (mode === "side") el("path", { d: `M${x1},${y1} C${x1},${y1 + 300} ${1500},${y2 - 200} ${x2},${y2}`, fill: "none", stroke: "#C9C5BB", "stroke-width": 1.5, "stroke-dasharray": "4 4", "marker-end": "url(#arrowGrey)" }, linksG);
+  else el("line", { x1, y1, x2, y2, stroke: "#C9C5BB", "stroke-width": 1.5, "marker-end": "url(#arrowGrey)" }, linksG);
+});
+// platform spine label: all agents call through the runtime
+el("line", { x1: 1480, y1: 704, x2: 1480, y2: 760, stroke: "#C9C5BB", "stroke-width": 1.5, "stroke-dasharray": "3 4" }, linksG);
+
+// components
+const compG = document.getElementById("components");
+const compNodes = {};
+function wrap(text, max) { const words = text.split(" "); const lines = []; let line = "";
+  words.forEach(w => { if ((line + " " + w).trim().length > max) { lines.push(line.trim()); line = w; } else line += " " + w; });
+  if (line.trim()) lines.push(line.trim()); return lines; }
+Object.entries(C).forEach(([id, c]) => {
+  const g = el("g", { class: "comp", "data-id": id, tabindex: 0 }, compG);
+  const [fillVar, strokeVar] = T[c.t];
+  el("rect", { class: "box", x: c.x, y: c.y, width: c.w, height: c.h, rx: 10, fill: css(fillVar), stroke: css(strokeVar), "stroke-width": 1.6 }, g);
+  const tt = el("text", { x: c.x + 14, y: c.y + 25, class: "c-title" }, g); tt.textContent = c.title;
+  const maxChars = Math.floor((c.w - 28) / 6.1);
+  wrap(c.sub, maxChars).slice(0, 2).forEach((line, i) => { const s = el("text", { x: c.x + 14, y: c.y + 44 + i * 15, class: "c-sub" }, g); s.textContent = line; });
+  const title = el("title", {}, g); title.textContent = c.title + " — click for details";
+  g.addEventListener("click", (e) => { if (!dragMoved) showComponent(id); });
+  compNodes[id] = g;
+});
+
+/* ======================================================================= VIEWBOX / ZOOM / PAN */
+const FULL = { x: 0, y: 0, w: 1600, h: 1065 };
+let vb = { ...FULL }, anim = null;
+function setVB(v) { vb = v; svg.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`); }
+function animateTo(target, ms = 650) {
+  cancelAnimationFrame(anim); const from = { ...vb }; const t0 = performance.now();
+  const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = (now) => { const p = Math.min(1, (now - t0) / ms), e = ease(p);
+    setVB({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, w: from.w + (target.w - from.w) * e, h: from.h + (target.h - from.h) * e });
+    if (p < 1) anim = requestAnimationFrame(step); };
+  anim = requestAnimationFrame(step);
+}
+function boxFor(ids, pad = 70) {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  ids.forEach(id => { const c = C[id]; x1 = Math.min(x1, c.x); y1 = Math.min(y1, c.y); x2 = Math.max(x2, c.x + c.w); y2 = Math.max(y2, c.y + c.h); });
+  x1 -= pad; y1 -= pad; x2 += pad; y2 += pad;
+  let w = x2 - x1, h = y2 - y1; const ratio = FULL.w / FULL.h;
+  if (w / h > ratio) { const nh = w / ratio; y1 -= (nh - h) / 2; h = nh; } else { const nw = h * ratio; x1 -= (nw - w) / 2; w = nw; }
+  if (w < 620) { const s = 620 / w; x1 -= (w * s - w) / 2; y1 -= (h * s - h) / 2; w *= s; h *= s; }
+  return { x: x1, y: y1, w, h };
+}
+svg.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(anim);
+  const r = svg.getBoundingClientRect(); const mx = vb.x + (e.clientX - r.left) / r.width * vb.w, my = vb.y + (e.clientY - r.top) / r.height * vb.h;
+  const s = e.deltaY > 0 ? 1.12 : 1 / 1.12; const w = Math.min(2400, Math.max(300, vb.w * s)), h = w * FULL.h / FULL.w;
+  setVB({ x: mx - (mx - vb.x) * (w / vb.w), y: my - (my - vb.y) * (h / vb.h), w, h }); }, { passive: false });
+let drag = null, dragMoved = false;
+svg.addEventListener("mousedown", (e) => { drag = { x: e.clientX, y: e.clientY, vb: { ...vb } }; dragMoved = false; svg.classList.add("dragging"); });
+window.addEventListener("mousemove", (e) => { if (!drag) return; const r = svg.getBoundingClientRect();
+  const dx = (e.clientX - drag.x) / r.width * vb.w, dy = (e.clientY - drag.y) / r.height * vb.h;
+  if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) dragMoved = true;
+  if (dragMoved) { cancelAnimationFrame(anim); setVB({ ...vb, x: drag.vb.x - dx, y: drag.vb.y - dy }); } });
+window.addEventListener("mouseup", () => { drag = null; svg.classList.remove("dragging"); setTimeout(() => dragMoved = false, 0); });
+
+/* ======================================================================= FLOWS & STEPS */
+let flowIdx = 0, stepIdx = -1, playing = null;
+const tabs = document.getElementById("flowTabs");
+FLOWS.forEach((f, i) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = f.name;
+  b.addEventListener("click", () => selectFlow(i)); tabs.appendChild(b); tabs.appendChild(document.createTextNode(" ")); });
+
+function badgePositions(flow) {
+  const used = {};
+  return flow.steps.map(s => { const id = s.c[0], c = C[id]; const k = used[id] = (used[id] || 0) + 1;
+    return { x: c.x + c.w - 20 - (k - 1) * 36, y: c.y + 2 }; });
+}
+function renderFlow() {
+  const flow = FLOWS[flowIdx], pos = badgePositions(flow);
+  const flowG = document.getElementById("flowLayer"), badgeG = document.getElementById("badges");
+  flowG.innerHTML = ""; badgeG.innerHTML = "";
+  el("path", { class: "flowpath", d: "M" + pos.map(p => `${p.x},${p.y}`).join(" L") }, flowG);
+  if (stepIdx > 0) el("path", { class: "flowseg", d: `M${pos[stepIdx - 1].x},${pos[stepIdx - 1].y} L${pos[stepIdx].x},${pos[stepIdx].y}`, "marker-end": "url(#arrow)" }, flowG);
+  flow.steps.forEach((s, i) => {
+    const g = el("g", { class: "badge" + (i === stepIdx ? " current" : i < stepIdx ? " done" : ""), tabindex: 0 }, badgeG);
+    el("circle", { cx: pos[i].x, cy: pos[i].y, r: 15 }, g);
+    const t = el("text", { x: pos[i].x, y: pos[i].y + 4.5, "text-anchor": "middle" }, g); t.textContent = i + 1;
+    const tt = el("title", {}, g); tt.textContent = `Step ${i + 1}: ${s.title}`;
+    g.addEventListener("click", (e) => { e.stopPropagation(); stopPlay(); goStep(i); });
+    g.addEventListener("mousedown", (e) => e.stopPropagation());
+  });
+  [...tabs.children].forEach((b, i) => b.classList.toggle("on", i === flowIdx));
+  document.getElementById("progressBar").style.width = stepIdx < 0 ? "0" : `${(stepIdx + 1) / flow.steps.length * 100}%`;
+  document.getElementById("prevBtn").disabled = stepIdx <= 0;
+  document.getElementById("nextBtn").disabled = stepIdx >= flow.steps.length - 1;
+}
+function highlight(ids) {
+  Object.entries(compNodes).forEach(([id, g]) => { g.classList.toggle("active", ids.includes(id)); g.classList.toggle("dim", ids.length > 0 && !ids.includes(id)); });
+}
+function goStep(i) {
+  const flow = FLOWS[flowIdx]; stepIdx = Math.max(0, Math.min(flow.steps.length - 1, i));
+  const s = flow.steps[stepIdx]; highlight(s.c); animateTo(boxFor(s.c)); renderFlow();
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no">${stepIdx + 1}</span><span class="step-title">${s.title}</span>
+      <span class="step-route">${s.route}</span><span class="spacer"></span>
+      <span class="pill">${flow.name} · step ${stepIdx + 1} of ${flow.steps.length}</span></div>
+    <div class="step-body">
+      <div><h4>Actions performed in this step</h4><ol>${s.actions.map(x => `<li>${x}</li>`).join("")}</ol></div>
+      <div><h4>Why it matters</h4><p style="margin:0 0 10px">${s.why}</p>
+        <h4>Components</h4><p style="margin:0 0 10px">${s.c.map(id => `<span class="pill red">${C[id].title}</span>`).join("")}</p>
+        <h4>Implemented in</h4><p style="margin:0"><code>${s.files}</code></p></div>
+    </div>`;
+}
+function showComponent(id) {
+  stopPlay(); const c = C[id]; highlight([id]); animateTo(boxFor([id], 110));
+  const inSteps = []; FLOWS.forEach(f => f.steps.forEach((s, i) => { if (s.c.includes(id)) inSteps.push(`${f.name.split(" ")[0]} step ${i + 1}`); }));
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no" style="background:var(--ink)">i</span><span class="step-title">${c.title}</span><span class="step-route">${c.sub}</span></div>
+    <div class="step-body"><div><h4>Responsibility</h4><p style="margin:0">${c.desc}</p></div>
+      <div><h4>Implemented in</h4><p style="margin:0 0 10px"><code>${c.files}</code></p>
+      <h4>Appears in</h4><p style="margin:0">${inSteps.length ? inSteps.map(s => `<span class="pill">${s}</span>`).join("") : "—"}</p></div></div>`;
+}
+function selectFlow(i) { stopPlay(); flowIdx = i; stepIdx = -1; renderFlow(); highlight([]); animateTo(FULL); introPanel(); }
+function introPanel() {
+  const f = FLOWS[flowIdx];
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no">▶</span><span class="step-title">${f.name}</span>
+      <span class="step-route">${f.steps.length} steps · click badge <b>1</b> or press Next / Play</span></div>
+    <div class="step-body"><div><h4>Steps in this flow</h4><ol>${f.steps.map((s, i) => `<li><a href="#" data-step="${i}">${s.title}</a></li>`).join("")}</ol></div>
+    <div><h4>How to read the diagram</h4><p style="margin:0">Numbered red badges mark where each step happens. The dashed red line traces the order.
+      The current step's components glow and the rest fade. Bands run top-down from channels to data; the left and right planes are cross-cutting
+      (policy and observability apply to every call).</p></div></div>`;
+  document.querySelectorAll("#stepPanel a[data-step]").forEach(a => a.addEventListener("click", (e) => { e.preventDefault(); goStep(+a.dataset.step); }));
+}
+function stopPlay() { if (playing) { clearInterval(playing); playing = null; document.getElementById("playBtn").textContent = "▶ Play"; } }
+document.getElementById("nextBtn").onclick = () => { stopPlay(); goStep(stepIdx + 1); };
+document.getElementById("prevBtn").onclick = () => { stopPlay(); goStep(stepIdx - 1); };
+document.getElementById("fitBtn").onclick = () => { stopPlay(); highlight([]); animateTo(FULL); };
+document.getElementById("playBtn").onclick = () => {
+  if (playing) return stopPlay();
+  document.getElementById("playBtn").textContent = "❚❚ Pause";
+  if (stepIdx >= FLOWS[flowIdx].steps.length - 1) stepIdx = -1;
+  goStep(stepIdx + 1);
+  playing = setInterval(() => { if (stepIdx >= FLOWS[flowIdx].steps.length - 1) return stopPlay(); goStep(stepIdx + 1); }, 4500);
+};
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const r = svg.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight) return;
+  if (e.key === "ArrowRight") { stopPlay(); goStep(stepIdx + 1); }
+  if (e.key === "ArrowLeft") { stopPlay(); goStep(stepIdx - 1); }
+  if (e.key === "Escape") { stopPlay(); highlight([]); animateTo(FULL); }
+});
+
+// ADRs
+document.getElementById("adrList").innerHTML = ADRS.map((r, i) => `
+  <details class="adr"${i === 0 ? " open" : ""}>
+    <summary><span class="id">${r.id}</span><span class="t">${r.t}</span><span class="pill green">${r.s}</span></summary>
+    <div class="adr-body">
+      <div><b>Context</b><p>${r.c}</p></div><div><b>Decision</b><p>${r.d}</p></div>
+      <div><b>Consequences</b><p>${r.k}</p></div><div><b>Alternatives considered</b><p>${r.alt}</p></div>
+    </div>
+  </details>`).join("");
+
+selectFlow(0);
+</script>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neu.Tail — End-to-End Solution Architecture</title>
+<style>
+  :root {
+    --red: #E31837; --red-tint: #FCEBEB; --ink: #2B2B2B; --ink-2: #5F5E5A; --ink-3: #8C8A84;
+    --cream: #F5F4F1; --cream-2: #E8E6DF; --paper: #FDFDFC; --line: #D9D6CE;
+    --channel: #EAF2FB; --channel-s: #6C8EBF; --exp: #EEF0FA; --exp-s: #6E74B8;
+    --intent: #F3EEFA; --intent-s: #8A6CB8; --orch: #FCEBEB; --orch-s: #E31837;
+    --agent: #FFF5E8; --agent-s: #C9822B; --stub: #F6F1E9; --stub-s: #A99273;
+    --plat: #E9F5EE; --plat-s: #3E8E5E; --data: #EEF3F3; --data-s: #4B7F86; --ext: #F4F4F4; --ext-s: #8C8A84;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+         color: var(--ink); background: var(--paper); line-height: 1.5; }
+  a { color: var(--red); }
+  header.top { position: sticky; top: 0; z-index: 20; background: #fff; border-bottom: 1px solid var(--line); }
+  .top-inner { max-width: 1440px; margin: 0 auto; display: flex; align-items: center; gap: 24px; padding: 10px 24px; }
+  .brand { font-weight: 800; font-size: 20px; letter-spacing: -.02em; }
+  .brand span { color: var(--red); }
+  nav.toc { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav.toc a { text-decoration: none; color: var(--ink-2); font-size: 13px; padding: 6px 10px; border-radius: 999px; }
+  nav.toc a:hover { background: var(--red-tint); color: var(--red); }
+  main { max-width: 1440px; margin: 0 auto; padding: 0 24px 80px; }
+  section { padding-top: 36px; scroll-margin-top: 56px; }
+  h1 { font-size: 34px; margin: 28px 0 6px; letter-spacing: -.02em; }
+  h2 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 .num { color: var(--red); margin-right: 8px; }
+  h3 { font-size: 16px; margin: 18px 0 8px; }
+  .lede { color: var(--ink-2); font-size: 16px; max-width: 980px; margin: 0 0 18px; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 700; color: var(--red); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  .grid { display: grid; gap: 14px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 1100px) { .g4, .g5 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px) { .g2, .g3, .g4, .g5 { grid-template-columns: 1fr; } }
+  .stat { font-size: 30px; font-weight: 800; color: var(--red); line-height: 1.1; }
+  .stat-label { font-size: 13px; color: var(--ink-2); }
+  .src { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+          background: var(--cream); color: var(--ink-2); margin: 0 4px 4px 0; }
+  .pill.red { background: var(--red-tint); color: var(--red); }
+  .pill.green { background: #E3F1E6; color: #2F7A45; } .pill.amber { background: #FBE9D2; color: #96660E; }
+  ul.tight { margin: 6px 0 0; padding-left: 18px; } ul.tight li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--cream-2); }
+  th { background: var(--cream); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); position: sticky; top: 53px; }
+  td code, li code, p code { background: var(--cream); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---------------- diagram ---------------- */
+  .diagram-frame { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px;
+             border-bottom: 1px solid var(--cream-2); background: linear-gradient(90deg, #fff 0%, var(--cream) 100%); }
+  .toolbar .label { font-size: 12px; color: var(--ink-3); margin-right: 4px; }
+  .btn { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 13px;
+         font-size: 13px; cursor: pointer; font-family: inherit; }
+  .btn:hover { border-color: var(--red); color: var(--red); }
+  .btn.on { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .spacer { flex: 1; }
+  .svg-wrap { position: relative; background: var(--paper); }
+  svg#arch { display: block; width: 100%; height: auto; aspect-ratio: 1600 / 1065; cursor: grab; user-select: none; }
+  svg#arch.dragging { cursor: grabbing; }
+  .zoom-hint { position: absolute; right: 12px; top: 10px; font-size: 11px; color: var(--ink-3);
+               background: rgba(255,255,255,.85); padding: 3px 8px; border-radius: 6px; pointer-events: none; }
+  .comp rect.box { transition: stroke-width .2s, opacity .3s; }
+  .comp { cursor: pointer; transition: opacity .35s; }
+  .comp.dim { opacity: .28; }
+  .comp.active rect.box { stroke: var(--red) !important; stroke-width: 4; filter: url(#glow); }
+  .comp:hover rect.box { stroke-width: 3; }
+  .band-label { font-size: 11px; font-weight: 700; letter-spacing: .14em; fill: var(--ink-3); text-transform: uppercase; }
+  .c-title { font-size: 15px; font-weight: 700; fill: var(--ink); }
+  .c-sub { font-size: 11.5px; fill: var(--ink-2); }
+  .badge { cursor: pointer; }
+  .badge circle { fill: #fff; stroke: var(--red); stroke-width: 2.5; transition: all .2s; }
+  .badge text { font-size: 13px; font-weight: 800; fill: var(--red); pointer-events: none; }
+  .badge:hover circle, .badge.current circle { fill: var(--red); }
+  .badge:hover text, .badge.current text { fill: #fff; }
+  .badge.done circle { fill: var(--red-tint); }
+  .badge.current circle { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0% { stroke-width: 2.5; } 50% { stroke-width: 7; stroke-opacity: .35; } 100% { stroke-width: 2.5; } }
+  .flowpath { fill: none; stroke: var(--red); stroke-width: 2; stroke-dasharray: 6 6; opacity: .35; }
+  .flowseg { fill: none; stroke: var(--red); stroke-width: 3.5; opacity: .9; stroke-dasharray: 8 6; animation: dash 1s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -28; } }
+  .plane-text { font-size: 12px; font-weight: 700; letter-spacing: .18em; fill: var(--ink-2); }
+
+  .step-panel { border-top: 1px solid var(--cream-2); padding: 16px 20px 18px; background: #fff; min-height: 210px; }
+  .step-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .step-no { background: var(--red); color: #fff; font-weight: 800; border-radius: 999px; min-width: 34px; height: 34px;
+             display: inline-flex; align-items: center; justify-content: center; font-size: 16px; padding: 0 8px; }
+  .step-title { font-size: 19px; font-weight: 700; }
+  .step-route { font-size: 13px; color: var(--ink-2); }
+  .step-body { display: grid; grid-template-columns: 1.6fr 1fr; gap: 22px; margin-top: 10px; }
+  @media (max-width: 900px) { .step-body { grid-template-columns: 1fr; } }
+  .step-body h4 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  .step-body ol { margin: 0; padding-left: 20px; } .step-body ol li { margin: 4px 0; }
+  .progress { height: 3px; background: var(--cream-2); }
+  .progress > div { height: 100%; background: var(--red); width: 0; transition: width .4s; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); padding: 10px 14px;
+            border-top: 1px solid var(--cream-2); background: var(--cream); }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; border: 1.5px solid; }
+
+  /* ---------------- ADR ---------------- */
+  details.adr { border: 1px solid var(--line); border-radius: 12px; background: #fff; margin-bottom: 10px; }
+  details.adr summary { cursor: pointer; padding: 14px 18px; display: flex; gap: 12px; align-items: center; list-style: none; }
+  details.adr summary::-webkit-details-marker { display: none; }
+  details.adr summary .id { font-weight: 800; color: var(--red); min-width: 74px; }
+  details.adr summary .t { font-weight: 700; flex: 1; }
+  details.adr[open] summary { border-bottom: 1px solid var(--cream-2); }
+  .adr-body { padding: 12px 18px 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 26px; font-size: 14px; }
+  .adr-body p { margin: 2px 0 0; }
+  .adr-body b { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+  @media (max-width: 900px) { .adr-body { grid-template-columns: 1fr; } }
+  .ring { border-left: 4px solid var(--red); }
+  footer { text-align: center; color: var(--ink-3); font-size: 12px; padding: 30px 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">Neu<span>.</span>Tail <span style="color:var(--ink-3);font-weight:500;font-size:14px">Solution Architecture</span></div>
+    <nav class="toc">
+      <a href="#context">1 · Business context</a>
+      <a href="#architecture">2 · End-to-end architecture</a>
+      <a href="#nfr">3 · Non-functional requirements</a>
+      <a href="#adr">4 · Architecture decisions</a>
+      <a href="#conclusion">5 · Conclusion</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="kicker" style="margin-top:28px">Digital Architect Hackathon · Season 7 · Team 5 — Condor Galaxy</div>
+  <h1>Personalisation Assistant — End-to-End Solution Architecture</h1>
+  <p class="lede">One agentic capability, built once on a governed agent platform and a single data spine, that personalises
+    discovery, sizes every customer, sells services with consent and rewards loyalty, and that can be sold beyond our own
+    estate. This page describes the solution <b>as built</b> in branch <code>feature/target-architecture</code>.</p>
+
+  <!-- ================================================================ 1. BUSINESS CONTEXT -->
+  <section id="context">
+    <h2><span class="num">1</span>Business context</h2>
+    <p class="lede">Neu.Tail is a UK fashion retailer that has chosen to be <b>a digital platform with stores</b>, with 38
+      stores acting as fulfilment, experience and trust nodes. The Personalisation Assistant is the capability that makes that
+      platform intelligent by default.</p>
+
+    <div class="grid g4">
+      <div class="card"><div class="stat">820K</div><div class="stat-label">loyalty members to personalise for</div><div class="src">Deck, slide 14</div></div>
+      <div class="card"><div class="stat">34%</div><div class="stat-label">return rate, mostly size &amp; fit, target 10–15%</div><div class="src">Deck, slides 3 &amp; 18</div></div>
+      <div class="card"><div class="stat">−18%</div><div class="stat-label">declining app opens from a generic, one-size feed</div><div class="src">Deck, slide 19 (Mission 2 pain)</div></div>
+      <div class="card"><div class="stat">38</div><div class="stat-label">stores in one stock pool &amp; one identity across channels</div><div class="src">Deck, slide 19</div></div>
+    </div>
+
+    <h3>Problem statement</h3>
+    <div class="grid g3">
+      <div class="card"><b>Customers aren't understood</b><ul class="tight">
+        <li>The feed is generic, so engagement falls.</li><li>Identity and basket reset between app, web and store.</li>
+        <li>Nothing a customer did yesterday shapes today.</li></ul></div>
+      <div class="card"><b>Returns erode margin</b><ul class="tight">
+        <li>34% of orders come back, mostly wrong size.</li><li>Return reasons are captured but not learned from.</li>
+        <li>No per-customer fit guidance exists before purchase.</li></ul></div>
+      <div class="card"><b>Value is left on the table</b><ul class="tight">
+        <li>No paid service layer (styling, guarantees, access).</li><li>Loyalty accrues points but doesn't engage.</li>
+        <li>Risky charges are checked manually or declined falsely.</li></ul></div>
+    </div>
+
+    <h3>The five functionalities and the agents that own them</h3>
+    <div class="grid g5">
+      <div class="card"><span class="pill red">UC1</span><br><b>Profiling &amp; segmentation</b><br><span class="stat-label">PERSONA · supported by ONEBASKET (identity)</span></div>
+      <div class="card"><span class="pill red">UC2</span><br><b>Personalised discovery</b><br><span class="stat-label">MUSE · supported by SCOUT (trend), PACE (price)</span></div>
+      <div class="card"><span class="pill red">UC3</span><br><b>Size &amp; fit</b><br><span class="stat-label">TAILOR · supported by GRADE (return reasons)</span></div>
+      <div class="card"><span class="pill red">UC4</span><br><b>Service upsell &amp; monetisation</b><br><span class="stat-label">CONCIERGE · hosted by CARE, approved by SENTRY</span></div>
+      <div class="card"><span class="pill red">UC5</span><br><b>Loyalty &amp; gamification</b><br><span class="stat-label">TALLY · consumes the PERSONA segment</span></div>
+    </div>
+
+    <h3>Commercial model: one capability, three widening rings</h3>
+    <div class="grid g3">
+      <div class="card ring"><span class="pill">Ring 1 · B2C</span><br><b>Free personalisation, paid services</b>
+        <p class="stat-label" style="margin:6px 0 0">Neu.Tail+ and Elite subscriptions sold by CONCIERGE <i>only on explicit consent</i>; free
+          tier funded by conversion and fewer returns.</p></div>
+      <div class="card ring"><span class="pill">Ring 2 · B2B open API</span><br><b>Agents as APIs</b>
+        <p class="stat-label" style="margin:6px 0 0">"Size &amp; Fit as a Service" (TAILOR) and "Segmentation as a Service" (PERSONA), exposed today through
+          the authenticated MCP adapter.</p></div>
+      <div class="card ring"><span class="pill">Ring 3 · B2B2C</span><br><b>White-label platform</b>
+        <p class="stat-label" style="margin:6px 0 0">The whole estate on a retailer's catalogue. The moat is outcome-based pricing on returns via the
+          GRADE→TAILOR loop.</p></div>
+    </div>
+
+    <h3>Scope, stakeholders and constraints</h3>
+    <div class="grid g3">
+      <div class="card"><b>In scope (built)</b><ul class="tight">
+        <li>Lead Orchestrator and 7 Personalisation agents.</li><li>4 supporting agents as thin stubs with real contracts.</li>
+        <li>Agent platform: runtime, policy, audit, gateway, prompts, memory, vector retrieval.</li>
+        <li>Storefront, review console, admin console and an external MCP adapter.</li></ul></div>
+      <div class="card"><b>Stakeholders</b><ul class="tight">
+        <li>Shoppers (loyalty members, new customers).</li><li>Store and service colleagues acting as human reviewers.</li>
+        <li>Merchandising, finance and risk (outcomes, approvals).</li><li>Ring 2/3 partners (API consumers).</li></ul></div>
+      <div class="card"><b>Constraints</b><ul class="tight">
+        <li>Demo scale: runs on one laptop with zero required services.</li><li>Every live dependency (LLM, Redis, Chroma) is optional
+          and has a deterministic fallback.</li><li>All data is synthetic, and no real PII is used.</li>
+        <li>The remaining 6 agents of the 17-agent estate are out of scope.</li></ul></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 2. ARCHITECTURE -->
+  <section id="architecture">
+    <h2><span class="num">2</span>End-to-end solution architecture</h2>
+    <p class="lede">Pick a flow, then click any numbered badge. The diagram zooms to the component and the panel at the
+      bottom explains what happens in that step and why. Use <b>Next/Prev</b> or the ← → keys, or <b>Play</b> to walk it. You can
+      also click any component for its description, scroll to zoom and drag to pan.</p>
+
+    <div class="diagram-frame">
+      <div class="toolbar">
+        <span class="label">Flow</span>
+        <span id="flowTabs"></span>
+        <span class="spacer"></span>
+        <button class="btn" id="prevBtn" title="Previous step (←)">◀ Prev</button>
+        <button class="btn" id="playBtn" title="Auto-play">▶ Play</button>
+        <button class="btn" id="nextBtn" title="Next step (→)">Next ▶</button>
+        <button class="btn" id="fitBtn" title="Show the whole architecture">⤢ Whole view</button>
+      </div>
+      <div class="progress"><div id="progressBar"></div></div>
+      <div class="svg-wrap">
+        <svg id="arch" viewBox="0 0 1600 1065" xmlns="http://www.w3.org/2000/svg" role="img"
+             aria-label="Neu.Tail end-to-end solution architecture diagram">
+          <defs>
+            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#E31837" flood-opacity=".45"/>
+            </filter>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#E31837"/>
+            </marker>
+            <marker id="arrowGrey" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#B9B5AB"/>
+            </marker>
+          </defs>
+          <g id="layerBands"></g>
+          <g id="staticLinks"></g>
+          <g id="components"></g>
+          <g id="flowLayer"></g>
+          <g id="badges"></g>
+        </svg>
+        <div class="zoom-hint">scroll to zoom · drag to pan</div>
+      </div>
+      <div class="step-panel" id="stepPanel"></div>
+      <div class="legend">
+        <span><i style="background:var(--channel);border-color:var(--channel-s)"></i>Channels</span>
+        <span><i style="background:var(--exp);border-color:var(--exp-s)"></i>Experience API</span>
+        <span><i style="background:var(--intent);border-color:var(--intent-s)"></i>Intent &amp; context</span>
+        <span><i style="background:var(--orch);border-color:var(--orch-s)"></i>Orchestration</span>
+        <span><i style="background:var(--agent);border-color:var(--agent-s)"></i>Personalisation agents</span>
+        <span><i style="background:var(--stub);border-color:var(--stub-s)"></i>Supporting agents / HITL</span>
+        <span><i style="background:var(--plat);border-color:var(--plat-s)"></i>Agent platform</span>
+        <span><i style="background:var(--data);border-color:var(--data-s)"></i>Data</span>
+        <span><i style="background:var(--ext);border-color:var(--ext-s)"></i>External</span>
+      </div>
+    </div>
+
+    <h3>Architecture principles applied</h3>
+    <div class="grid g4">
+      <div class="card"><b>One chokepoint</b><br><span class="stat-label">Every tool call goes through <code>runtime.invoke()</code>, which does the policy check, binds the customer, validates input, scopes data access and writes the audit entry.</span></div>
+      <div class="card"><b>Identity is never self-declared</b><br><span class="stat-label">The principal comes from the token or API key, or from the runtime when one agent calls another. It never comes from a request body.</span></div>
+      <div class="card"><b>Money moves on consent</b><br><span class="stat-label">Offers are read-only. Commits need an explicit action, pass SENTRY, run in one transaction and are idempotent.</span></div>
+      <div class="card"><b>Degrade, don't fail</b><br><span class="stat-label">LLM, Redis and Chroma are all optional. Each has a deterministic fallback, and every use of a fallback is logged.</span></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ 3. NFRs -->
+  <section id="nfr">
+    <h2><span class="num">3</span>Non-functional requirements</h2>
+    <p class="lede">Each NFR shows how the architecture meets it, the evidence from the build, and the gap to production. Demo numbers
+      come from the local build on synthetic data, so treat them as indicative rather than benchmarks.</p>
+    <div class="card" style="padding:0;overflow:hidden">
+    <table>
+      <thead><tr><th style="width:12%">Quality</th><th style="width:22%">Requirement</th><th style="width:30%">How the architecture meets it</th><th style="width:18%">Evidence (as built)</th><th style="width:18%">Production path</th></tr></thead>
+      <tbody>
+        <tr><td><b>Security: identity</b></td><td>No caller can act as another principal or another customer.</td>
+          <td>Shopper token (HMAC-signed, customer-bound) or staff API key resolves to the principal; the runtime switches to the owning agent for nested calls; shopper contexts can't name a different customer.</td>
+          <td><span class="pill green">tested</span> forged <code>caller</code>, cross-customer read and storefront→<code>earn_points</code> all denied (403).</td>
+          <td>OIDC/IdP login, mTLS between services, secrets in a vault.</td></tr>
+        <tr><td><b>Security: authorisation</b></td><td>Least privilege on tools and data.</td>
+          <td>Default-deny tool ACL per contract plus the slide-7 data-domain matrix enforced in the data-access layer; contracts claiming ungranted domains fail at import.</td>
+          <td><span class="pill green">tested</span> <code>DataAccessDenied</code> outside scope / undeclared domain.</td>
+          <td>Externalise to OPA/Rego with the same matrix as data.</td></tr>
+        <tr><td><b>Privacy &amp; consent</b></td><td>PII minimised; marketing needs consent.</td>
+          <td>CARE masks contact data; upsell gated on <code>marketing_consent</code>; audit details redacted (hashed customer IDs, contact fields dropped, lists truncated).</td>
+          <td><span class="pill green">tested</span> no raw ID or email in trace rows; Elena (no consent) gets no offer.</td>
+          <td>DPIA, retention schedules, right-to-erasure job, field-level encryption.</td></tr>
+        <tr><td><b>Financial integrity</b></td><td>No double charge, no lost points, no unauthorised spend.</td>
+          <td>Server-side pricing; pydantic bounds; one DB transaction per commit; idempotency keys; compare-and-set on offers/escalations; ledger <code>UNIQUE(source, ref_id)</code>.</td>
+          <td><span class="pill green">tested</span> 4 concurrent approvals → 1 order; 10 concurrent earns → exact sum; replay → same order.</td>
+          <td>Payment-gateway idempotency, outbox to ERP/ledger.</td></tr>
+        <tr><td><b>Human oversight</b></td><td>Risky charges are reviewed by a person.</td>
+          <td>SENTRY risk score (amount bound, first-time payer, multiple of average order, velocity, tenure) escalates ≥ 0.5 to the review queue; reviewer identity comes from the staff key.</td>
+          <td><span class="pill green">demoed</span> Amara's £90 Elite plan → queue → approve → order + points.</td>
+          <td>Case management integration, SLA alerts, four-eyes for high value.</td></tr>
+        <tr><td><b>Performance</b></td><td>Pages feel instant; a live model is only used where it adds value.</td>
+          <td>Recommendation rows use the deterministic ranker (no model on page load); single-query stock filter; fit profile cached per category in MUSE's loop; candidates capped at 60 before any prompt.</td>
+          <td><span class="pill amber">indicative</span> ~220 ms for a full discovery turn on fallback; seed ~1 s.</td>
+          <td>Streaming responses, response cache, feature store, async event bus.</td></tr>
+        <tr><td><b>Availability &amp; resilience</b></td><td>The journey still works when a dependency is down.</td>
+          <td>Gateway tries providers in order and then a fallback; Redis re-probed after 30 s; Chroma falls back to token overlap; server-side refusal fallback on Opus 5.5.</td>
+          <td><span class="pill green">demoed</span> whole suite and demo run with no keys, Redis or Chroma.</td>
+          <td>Multi-AZ, circuit breakers, health-based routing, chaos tests.</td></tr>
+        <tr><td><b>Scalability</b></td><td>Grow from demo to 820K members.</td>
+          <td>Stateless API; customer-scoped session keys; data behind a domain DAL, so stores can be swapped per domain.</td>
+          <td><span class="pill amber">demo scale</span> SQLite (WAL), single node.</td>
+          <td>Postgres per domain, Redis cluster, managed vector DB, horizontal API pods.</td></tr>
+        <tr><td><b>Observability</b></td><td>Any answer can be explained end to end.</td>
+          <td>Single audit writer with <code>trace_id</code>, kind, latency, model and prompt version, outcome; writes deferred until after the transaction so a rollback never erases them.</td>
+          <td><span class="pill green">tested</span> one trace links segment → retrieval → SCOUT/PACE → TAILOR → model → rank.</td>
+          <td>OpenTelemetry export, dashboards, eval harness on prompt changes.</td></tr>
+        <tr><td><b>AI governance</b></td><td>Prompts and models are governed, swappable and safe.</td>
+          <td>Capability→model map in config; versioned prompt registry with a shared guard prompt; input cleaning; output filters (URLs, unsupported prices, length).</td>
+          <td><span class="pill green">built</span> every model row carries <code>prompt_version</code>.</td>
+          <td>Prompt A/B with offline evals, red-team suite, drift monitoring.</td></tr>
+        <tr><td><b>Maintainability</b></td><td>Agents can change without touching each other.</td>
+          <td>Each agent = contracts + handlers; stubs give real seams for SCOUT/PACE/GRADE/ONEBASKET; orchestrator holds no agent logic.</td>
+          <td><span class="pill green">built</span> 11 agents, 20 tool contracts, one registry.</td>
+          <td>Contract versioning, consumer-driven contract tests.</td></tr>
+        <tr><td><b>Testability &amp; repeatability</b></td><td>Deterministic, reproducible demos and tests.</td>
+          <td>Fixed-seed causal data generator; throwaway test DB; live models disabled under test.</td>
+          <td><span class="pill green">28 tests pass</span> in ~3 s.</td>
+          <td>CI pipeline, load tests, synthetic monitoring.</td></tr>
+        <tr><td><b>Interoperability</b></td><td>Partners can consume agents as APIs (Ring 2).</td>
+          <td>Authenticated MCP adapter exposing read-only contracts; same policy as internal calls.</td>
+          <td><span class="pill green">demoed</span> no key → 401; reads OK; writes denied.</td>
+          <td>API gateway, metering per call, partner tenancy.</td></tr>
+        <tr><td><b>Cost</b></td><td>Pay for intelligence only where it earns its keep.</td>
+          <td>Fast tier for routing and note blending; reasoning tier only for typed search ranking and offer pitches; Opus 5.5 at medium effort.</td>
+          <td><span class="pill amber">by design</span> zero model calls for home-page rows.</td>
+          <td>Per-route effort tuning, prompt caching, cost dashboards.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- ================================================================ 4. ADRs -->
+  <section id="adr">
+    <h2><span class="num">4</span>Architecture decision records</h2>
+    <p class="lede">The significant, hard-to-reverse decisions behind the build. Click a record to expand it.</p>
+    <div id="adrList"></div>
+  </section>
+
+  <!-- ================================================================ 5. CONCLUSION -->
+  <section id="conclusion">
+    <h2><span class="num">5</span>Conclusion summary</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3 style="margin-top:0">What the architecture delivers</h3>
+        <ul class="tight">
+          <li><b>All five functionalities run end to end</b>: personalised discovery, per-customer fit, consent-based upsell with human
+            review, a learning returns loop and gamified loyalty.</li>
+          <li><b>Governance is enforced, not just drawn</b>: one runtime chokepoint, identity the caller can't forge, a tool ACL plus the slide-7
+            data matrix, a redacted audit trail with end-to-end traces.</li>
+          <li><b>Commerce you can trust</b>: server-side pricing, single-transaction commits, idempotency and compare-and-set, all
+            proven under concurrency in tests.</li>
+          <li><b>The business case is measurable</b>: on the causally simulated estate, guided orders return ~14% against a ~35%
+            baseline, the signal behind Ring 2/3 outcome-based pricing.</li>
+          <li><b>Resilient and cheap to run</b>: every live dependency is optional, and model use is targeted to where it adds value.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">What comes next (production path)</h3>
+        <ul class="tight">
+          <li><b>Identity &amp; policy</b>: replace demo login with OIDC, externalise policy to OPA, and keep the same matrix as data.</li>
+          <li><b>Data spine</b>: move to Postgres per domain, a real-time CDP/feature store and a managed vector DB, with an event bus for GRADE/SCOUT signals.</li>
+          <li><b>Deepen the stubs</b>: GRADE vision grading (vision tier already mapped), live SCOUT trend, PACE price pacing in the ±5% band.</li>
+          <li><b>AI assurance</b>: an offline eval set per prompt, prompt A/B tests, red-teaming, and OpenTelemetry export of the existing traces.</li>
+          <li><b>Ring 2 go-to-market</b>: API gateway, per-call metering and partner tenancy on top of the MCP adapter.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px;background:var(--red-tint);border-color:#F3C9CF">
+      <b>Bottom line:</b> the Personalisation Assistant is built once on a governed agent platform. It understands each customer, sizes
+      them before they buy and only charges with consent. It is safe to extend from our own 820K members (Ring 1) to partners as
+      APIs (Ring 2) and to a white-label platform (Ring 3), and the GRADE→TAILOR returns loop is the differentiator a software-only
+      rival can't copy.
+    </div>
+  </section>
+  <footer>Neu.Tail · Team 5 — Condor Galaxy · Source of truth: <code>docs/ARCHITECTURE.md</code>, code in <code>neutail/</code> · All data synthetic</footer>
+</main>
+
+<script>
+/* ======================================================================= MODEL */
+const BANDS = [
+  { y: 20,  h: 110, label: "Channels",                       fill: "#F6F9FD" },
+  { y: 145, h: 110, label: "Experience API",                 fill: "#F7F8FD" },
+  { y: 270, h: 110, label: "Intent sensing & context",       fill: "#FAF8FD" },
+  { y: 395, h: 110, label: "Orchestration",                  fill: "#FFF8F8" },
+  { y: 520, h: 200, label: "Agent mesh — Personalisation Assistant", fill: "#FFFCF7" },
+  { y: 735, h: 200, label: "Enterprise LLM & agent platform", fill: "#F6FBF8" },
+  { y: 950, h: 105, label: "Data universe",                  fill: "#F5F8F8" },
+];
+const T = { channel: ["--channel", "--channel-s"], exp: ["--exp", "--exp-s"], intent: ["--intent", "--intent-s"],
+  orch: ["--orch", "--orch-s"], agent: ["--agent", "--agent-s"], stub: ["--stub", "--stub-s"],
+  plat: ["--plat", "--plat-s"], data: ["--data", "--data-s"], ext: ["--ext", "--ext-s"] };
+const a = (i) => 110 + i * 197;
+const C = {
+  storefront: { x: 110, y: 46, w: 430, h: 70, t: "channel", title: "Retail storefront", sub: "Streamlit · shopper persona login · real product photos",
+    desc: "Shopper-facing web experience: personalised home rows, search, product pages with sizes, fit check, stylist offers, My orders with returns, loyalty and rewards. It's a client of the Experience API only.", files: "apps/storefront/streamlit_app.py" },
+  console: { x: 560, y: 46, w: 430, h: 70, t: "channel", title: "Reviewer & admin console", sub: "Human review queue · outcomes · traces · policy",
+    desc: "Staff tabs authenticated with API keys: reviewers resolve SENTRY escalations; admins see business outcomes, follow traces, inspect the enforced data matrix, contracts, prompts, models and the redacted audit.", files: "apps/storefront/streamlit_app.py (Human review / Admin tabs)" },
+  mcpclient: { x: 1010, y: 46, w: 480, h: 70, t: "ext", title: "External MCP clients · Ring-2 partners", sub: "Claude Desktop / Code · partner systems",
+    desc: "External consumers of agents-as-APIs (e.g. Size & Fit as a Service). They connect to the MCP adapter with a Bearer key and act as the read-only external_mcp principal.", files: "scripts/demo_mcp_client.py" },
+  api: { x: 110, y: 171, w: 620, h: 70, t: "exp", title: "Experience API (FastAPI :8000)", sub: "/chat · /recommendations · /orders · /offers · /fit · /returns · /loyalty",
+    desc: "Transport only: resolves the principal from authentication, builds a Context with a fresh trace_id, and calls the orchestrator or runtime.invoke(). It maps errors to HTTP codes (403 policy, 400 invalid, 404 missing, 429 rate limit).", files: "neutail/api/app.py" },
+  auth: { x: 750, y: 171, w: 380, h: 70, t: "exp", title: "Auth → principal", sub: "HMAC shopper token · staff X-API-Key · MCP Bearer",
+    desc: "Shopper tokens bind the customer_id server-side (issued after ONEBASKET resolves identity). Staff keys map to human_reviewer, admin or external_mcp. Nothing in a request body can choose identity.", files: "neutail/api/auth.py" },
+  assets: { x: 1150, y: 171, w: 340, h: 70, t: "exp", title: "Product imagery /assets", sub: "63 Unsplash photos, matched to product type",
+    desc: "Static product photography served locally (offline-safe). Each of the 1,096 SKUs maps to a photo of its product type, and its colour attribute comes from the photo.", files: "assets/products/ · CREDITS.md" },
+  intent: { x: 110, y: 296, w: 620, h: 70, t: "intent", title: "Intent sensing & entities", sub: "discovery · fit · service · loyalty · accept_offer · unknown",
+    desc: "Classifies each clause into intents plus entities (category, ordinal, SKU) using the fast-tier model, with a word-boundary keyword and entity matcher as the deterministic fallback.", files: "neutail/orchestration/intents.py · prompts/orchestrator_intent.yaml" },
+  context: { x: 750, y: 296, w: 740, h: 70, t: "intent", title: "Context object (per turn)", sub: "principal · customer · session · trace_id · segment · last_results · pending_offer",
+    desc: "One object passed from agent to agent (deck slide 8). Loaded from short-term memory at the start of a turn and saved at the end; keys are scoped by customer and session.", files: "neutail/context.py" },
+  orchestrator: { x: 110, y: 421, w: 880, h: 70, t: "orch", title: "Lead Orchestrator", sub: "route · decompose (dependency order) · confidence gate · hold context",
+    desc: "Loads context, classifies, publishes PERSONA's segment once, dispatches intents in dependency order (discovery before fit), composes and saves. It holds no agent logic; every call is runtime.invoke() as lead_orchestrator.", files: "neutail/orchestration/orchestrator.py" },
+  composer: { x: 1010, y: 421, w: 480, h: 70, t: "orch", title: "Response Composer", sub: "merges multi-intent results into one reply",
+    desc: "A plain module, not an agent: it merges per-intent results into one composite reply. It touches no data and calls no model.", files: "neutail/orchestration/response_composer.py" },
+  persona: { x: a(0), y: 546, w: 180, h: 72, t: "agent", title: "PERSONA", sub: "UC1 · segment & micro-segment",
+    desc: "Scores tier, tenure, 90-day spend and recency → segment (affluent/value), micro-segment, confidence, signals and preference tags. Publishes them onto the context.", files: "agents/persona.py" },
+  muse: { x: a(1), y: 546, w: 180, h: 72, t: "agent", title: "MUSE", sub: "UC2 · discovery ranking",
+    desc: "Semantic candidates → in-stock filter → SCOUT trend & PACE price → TAILOR risk per category → reasoning model or deterministic ranker → diversity cap. Logs searches vs impressions separately.", files: "agents/muse.py · prompts/muse_rank.yaml" },
+  tailor: { x: a(2), y: 546, w: 180, h: 72, t: "agent", title: "TAILOR", sub: "UC3 · fit & return risk",
+    desc: "Per-customer return risk shrunk toward the category baseline, multiplied by the estate's measured guidance effect. Size direction comes from GRADE reason codes; optional note blended by the fast model.", files: "agents/tailor.py" },
+  care: { x: a(3), y: 546, w: 180, h: 72, t: "agent", title: "CARE", sub: "UC4 · service, hosts CONCIERGE",
+    desc: "Masks PII, gates upsell on tier and marketing consent, serves order history for self-service returns.", files: "agents/care.py" },
+  concierge: { x: a(4), y: 546, w: 180, h: 72, t: "agent", title: "CONCIERGE", sub: "UC4 · offers & commits",
+    desc: "compose_offer (read-only), accept_offer, commit_order, resolve_escalation. The only writer of orders: single transaction, idempotency keys, compare-and-set.", files: "agents/concierge.py" },
+  sentry: { x: a(5), y: 546, w: 180, h: 72, t: "agent", title: "SENTRY", sub: "UC4 · risk & approval",
+    desc: "Risk score from amount bound, first-time payer, multiple of average order, velocity and tenure. Approves below 0.5, otherwise writes an idempotent pending escalation.", files: "agents/sentry.py" },
+  tally: { x: a(6), y: 546, w: 180, h: 72, t: "agent", title: "TALLY", sub: "UC5 · points, tiers, badges",
+    desc: "Append-only ledger (idempotent per business event), tier upgrades from year-to-date spend, bounded redemption, badges computed from real behaviour.", files: "agents/tally.py" },
+  onebasket: { x: a(0), y: 632, w: 180, h: 72, t: "stub", title: "ONEBASKET", sub: "identity (stub)",
+    desc: "Resolves a login handle (customer ID or email) to one customer identity before a token is issued.", files: "agents/stubs.py" },
+  scout: { x: a(1), y: 632, w: 180, h: 72, t: "stub", title: "SCOUT", sub: "trend signal (stub)",
+    desc: "Trend flags per SKU plus estate-wide 7-day category momentum from behavioural events.", files: "agents/stubs.py" },
+  pace: { x: a(2), y: 632, w: 180, h: 72, t: "stub", title: "PACE", sub: "price context ±5% (stub)",
+    desc: "Current price, markdown, discount and the ±5% guardrail band per SKU. It's also the price source for orders.", files: "agents/stubs.py" },
+  grade: { x: a(3), y: 632, w: 180, h: 72, t: "stub", title: "GRADE", sub: "returns grading (stub)",
+    desc: "Records a graded return linked to its order. Fit reasons feed TAILOR; the rest go to RECLAIM recovery.", files: "agents/stubs.py" },
+  hitl: { x: a(4), y: 632, w: 574, h: 72, t: "stub", title: "Human-in-the-loop review queue", sub: "escalations · reviewer decision completes or closes the paused commit",
+    desc: "SENTRY writes pending escalations here. A reviewer's approval runs the commit (order, stock, points) in one transaction; compare-and-set prevents double approval.", files: "data/escalations.py · concierge.resolve_escalation" },
+  runtime: { x: 110, y: 761, w: 260, h: 72, t: "plat", title: "Agent runtime", sub: "runtime.invoke() — the one path",
+    desc: "Contract lookup → policy → customer binding → input validation → handler runs as the owning agent inside a data scope and an audit span.", files: "platform/runtime.py · platform/contracts.py" },
+  policy: { x: 390, y: 761, w: 260, h: 72, t: "plat", title: "Policy & guardrails", sub: "tool ACL · data matrix · rate limits",
+    desc: "Default-deny allow-lists per contract, the slide-7 agent×domain matrix (mode and method), and per-actor rate limits that are tighter for side effects.", files: "platform/policy.py" },
+  audit: { x: 670, y: 761, w: 260, h: 72, t: "plat", title: "Audit & observability", sub: "trace_id · latency · model · prompt · redacted",
+    desc: "A single writer for tool, model, retrieval and human events. Writes are deferred until after the transaction so rollbacks never erase evidence, and details are redacted.", files: "platform/audit.py" },
+  gateway: { x: 950, y: 761, w: 260, h: 72, t: "plat", title: "Model gateway", sub: "capability → model · provider fallback",
+    desc: "reasoning → claude-opus-5-5 (medium effort, server-side refusal fallback), fast → claude-haiku-4-5, vision → claude-opus-5-5. Tries OpenRouter, then Anthropic, then the deterministic fallback.", files: "platform/gateway.py · config/models.json" },
+  prompts: { x: 1230, y: 761, w: 260, h: 72, t: "plat", title: "Prompt service", sub: "versioned YAML · guard prompt · filters",
+    desc: "Versioned per-agent prompts with a shared guard prompt prepended at run time; input cleaning and output filters (no URLs, no unsupported prices, length caps).", files: "platform/prompts.py · neutail/prompts/" },
+  session: { x: 110, y: 847, w: 400, h: 72, t: "plat", title: "Short-term memory", sub: "Redis (TTL) · SQLite fallback · customer-scoped",
+    desc: "Holds the context object between turns, keyed by customer and session. Redis with a 30-minute TTL when reachable, re-probed after failures; SQLite otherwise.", files: "platform/session_store.py" },
+  vector: { x: 530, y: 847, w: 400, h: 72, t: "plat", title: "Vector retrieval", sub: "Chroma cosine · token-overlap fallback · fingerprint reindex",
+    desc: "Semantic catalogue search (local MiniLM embeddings, cosine score = 1 − distance), rebuilt when the catalogue fingerprint changes. Audited as kind=retrieval.", files: "platform/vector_store.py" },
+  providers: { x: 950, y: 847, w: 540, h: 72, t: "ext", title: "Model providers (external)", sub: "Anthropic API · OpenRouter",
+    desc: "Foundation models reached only through the gateway. Agents never hold provider credentials or model IDs.", files: "config/models.json" },
+  dal: { x: 110, y: 976, w: 560, h: 66, t: "data", title: "Data-access layer (per domain)", sub: "crm · loyalty · catalogue · inventory · transactional · escalations · returns · behavioural · fit",
+    desc: "Agents never write SQL against tables they don't own. Each function is tagged with domain and mode; calls outside the running contract's grant raise DataAccessDenied.", files: "neutail/data/" },
+  sqlite: { x: 690, y: 976, w: 420, h: 66, t: "data", title: "System of record (SQLite, WAL)", sub: "unit of work · idempotency keys · ledger · indexes",
+    desc: "The demo's system of record for every domain. db.transaction() publishes one connection so nested tool calls join a single commit or rollback.", files: "neutail/db.py · neutail/schema.sql" },
+  chroma: { x: 1130, y: 976, w: 170, h: 66, t: "data", title: "Chroma", sub: "vectors (optional)",
+    desc: "Embedded vector database persisted under data/chroma; optional.", files: "data/chroma/" },
+  redis: { x: 1320, y: 976, w: 170, h: 66, t: "data", title: "Redis", sub: "sessions (optional)",
+    desc: "Session memory with TTL; optional.", files: "REDIS_URL" },
+};
+
+/* Flows: each step → components it touches (first = where the badge sits) */
+const FLOWS = [
+  { id: "discovery", name: "① Discovery → Fit", steps: [
+    { c: ["storefront", "auth", "onebasket"], title: "Shopper signs in", route: "Storefront → /auth/login → ONEBASKET",
+      actions: ["The shopper picks a persona (demo login); the storefront calls POST /auth/login.", "ONEBASKET's resolve_identity maps the handle to one customer_id.",
+        "The API issues an HMAC-signed token that binds that customer server-side for the whole session."],
+      why: "From here on, no request body can choose whose data is touched.", files: "api/auth.py · agents/stubs.py" },
+    { c: ["api", "storefront"], title: "Message arrives at the Experience API", route: "POST /chat {session_id, message} + Bearer token",
+      actions: ["Example message: \"show me blazers and check my fit for jeans\".", "The API verifies the token, builds a Context (principal=lead_orchestrator, customer bound, role=shopper).",
+        "A fresh trace_id is minted and set for every audit write in this request."],
+      why: "One trace_id lets you follow every downstream hop later.", files: "api/app.py · context.py" },
+    { c: ["orchestrator", "context", "session"], title: "Orchestrator restores context", route: "Lead Orchestrator → short-term memory",
+      actions: ["Loads the context object for (customer, session) from Redis or SQLite.", "Restores last_results, pending_offer and the published segment.",
+        "Another customer reusing the same session_id gets nothing back, because keys are customer-scoped."],
+      why: "Follow-ups like \"the second one\" resolve without restating anything.", files: "orchestration/orchestrator.py · platform/session_store.py" },
+    { c: ["intent", "gateway", "prompts", "providers"], title: "Intent & entity classification", route: "Intent sensing → Model gateway (fast tier)",
+      actions: ["Prompt orchestrator_intent@3 with the guard prompt goes to claude-haiku-4-5 through the gateway.", "If there's no key or the output is unusable, a word-boundary keyword and entity matcher is used instead (logged as fallback).",
+        "Result: [discovery · category=jacket], [fit · category=jeans]."],
+      why: "Entities let fit size the category the customer named, not whatever was shown first.", files: "orchestration/intents.py · platform/gateway.py" },
+    { c: ["orchestrator"], title: "Confidence gate & decomposition", route: "Lead Orchestrator",
+      actions: ["If the top intent is unknown or confidence is below 0.5, it asks a clarifying question instead of guessing.", "Qualifying intents are ordered by dependency: discovery → fit → loyalty → service → accept.",
+        "PERSONA's segment will be published once for the whole turn."],
+      why: "This is the reflection / self-check pattern: don't route blind.", files: "orchestration/orchestrator.py" },
+    { c: ["persona", "runtime", "policy", "dal"], title: "PERSONA publishes the segment", route: "runtime.invoke(get_customer_segment)",
+      actions: ["Runtime: ACL check (lead_orchestrator allowed), customer bound from the context, input validated.", "Handler runs as persona_agent inside a data scope of crm, loyalty, behavioural and transactional (read only).",
+        "Returns segment=affluent, micro_segment=loyal_premium, confidence, signals and preference tags."],
+      why: "Downstream agents read the context instead of re-deriving the segment.", files: "agents/persona.py · platform/runtime.py" },
+    { c: ["muse", "vector", "dal"], title: "MUSE retrieves candidates", route: "MUSE → vector retrieval → inventory",
+      actions: ["Semantic search over the catalogue (Chroma cosine or token-overlap fallback), audited as retrieval.", "Filtered to the requested category (jacket) and to in-stock SKUs in one query.",
+        "The index is rebuilt automatically if the catalogue fingerprint has changed."],
+      why: "Relevance is decided at retrieval, not left to the ranker.", files: "agents/muse.py · platform/vector_store.py" },
+    { c: ["scout", "pace", "tailor", "muse"], title: "Evaluator loop: trend, price, fit risk", route: "MUSE → SCOUT · PACE · TAILOR (as muse_agent)",
+      actions: ["SCOUT: trending flags and 7-day category momentum.", "PACE: price, markdown, ±5% band, low-stock flag.",
+        "TAILOR: personal return risk per category (once per category, not per SKU)."],
+      why: "Nested calls go out as muse_agent because the runtime switched identity, not because MUSE named itself.", files: "agents/stubs.py · agents/tailor.py" },
+    { c: ["muse", "gateway", "prompts"], title: "Ranking, filtering, diversity", route: "MUSE → reasoning tier (claude-opus-5-5) or deterministic ranker",
+      actions: ["Up to 60 pre-filtered candidates go to prompt muse_rank@4; reasons pass the output filter.", "Fallback ranker: tier fit, semantic score, engagement, trend, momentum, sale, newness, minus return risk.",
+        "Diversity cap, then 'search' events are logged (typed queries only)."],
+      why: "used_live_model reports whether the results really came from the model.", files: "agents/muse.py" },
+    { c: ["tailor", "grade", "dal"], title: "TAILOR sizes jeans for this customer", route: "runtime.invoke(get_fit_profile, category=jeans)",
+      actions: ["Reads orders, GRADE return reasons and the fit profile for jeans.", "too_small returns → runs small; kept size L → recommend L.",
+        "Risk = shrunk personal rate × measured guidance effect ≈ 16% vs ≈ 36% category baseline."],
+      why: "This is the GRADE→TAILOR loop the outcome-based pricing rests on.", files: "agents/tailor.py · data/fit.py" },
+    { c: ["composer", "session", "api", "storefront"], title: "Compose, remember, reply", route: "Response Composer → memory → API → storefront",
+      actions: ["The composite reply merges discovery and fit parts.", "last_results is saved for follow-ups.",
+        "The storefront renders photo cards with reasons, personal return risk and the fit panel."],
+      why: "The shopper gets one coherent answer to a two-part question.", files: "orchestration/response_composer.py · apps/storefront/streamlit_app.py" },
+    { c: ["audit", "console"], title: "Every hop is evidence", route: "Audit → Admin trace view",
+      actions: ["~14 audit rows share the trace_id: model routing, segment, retrieval, SCOUT, PACE, TAILOR ×N, ranking.", "Each row carries kind, latency, model, prompt version and outcome; details are redacted.",
+        "Admin → Trace shows the whole journey."],
+      why: "Any recommendation can be explained after the fact.", files: "platform/audit.py · GET /admin/traces/{id}" },
+  ]},
+  { id: "upsell", name: "② Consent-based upsell & HITL", steps: [
+    { c: ["storefront", "api", "orchestrator"], title: "Customer asks for a stylist", route: "POST /chat \"I'd like a stylist\"",
+      actions: ["Classified as service; the segment is published onto the context.", "The orchestrator calls CARE and CONCIERGE through the runtime."],
+      why: "Asking a question must never cost money.", files: "orchestration/orchestrator.py" },
+    { c: ["care", "dal"], title: "CARE checks eligibility & consent", route: "runtime.invoke(resolve_contact)",
+      actions: ["Contact masked (PII & consent policy).", "Eligible only if tier is Gold or Platinum AND marketing_consent is on file.",
+        "Elena (no consent) stops here with a clear reason."],
+      why: "This is consent by design, not by convention.", files: "agents/care.py" },
+    { c: ["concierge", "gateway", "prompts"], title: "CONCIERGE composes the offer (read-only)", route: "runtime.invoke(compose_offer)",
+      actions: ["Plan and price come from the plans table: Neu.Tail+ £60, Elite £90 (Platinum).", "The pitch uses concierge_offer@3 on the reasoning tier, then the output filter strips any invented price.",
+        "An offer row (open, 30-minute expiry) is written; pending_offer goes into context. Nothing is charged."],
+      why: "The price can never come from the caller.", files: "agents/concierge.py" },
+    { c: ["storefront", "api"], title: "Explicit customer action", route: "POST /offers/{id}/accept + idempotency key",
+      actions: ["The customer clicks Subscribe (or says \"yes, sign me up\").", "The idempotency key is reused on retries and double-clicks.",
+        "The offer must belong to this customer, still be open and not have expired."],
+      why: "Only an explicit act moves money.", files: "api/app.py · concierge._accept_offer" },
+    { c: ["sentry", "dal"], title: "SENTRY scores the charge", route: "runtime.invoke(check_payment_policy) as concierge_agent",
+      actions: ["Score = amount over bound (+0.5), first-time payer (+0.3), over 3× average order (+0.25), velocity (+0.25), new account (+0.15).", "Below 0.5 → approve. At or above 0.5 → idempotent pending escalation.",
+        "Priya £60 → approved; Amara £90 Elite → escalated."],
+      why: "Risk is scored, not compared against one hard-coded number.", files: "agents/sentry.py" },
+    { c: ["concierge", "tally", "sqlite"], title: "Approved: one atomic commit", route: "db.transaction(): offer CAS → order → TALLY ledger",
+      actions: ["The offer moves open → accepted by compare-and-set; the order is inserted with its idempotency key.", "TALLY earn_points: a ledger row (UNIQUE per order) and an atomic balance update; tier upgrade if spend qualifies.",
+        "All of it commits or rolls back together."],
+      why: "No order without points, no points without an order, no double charge.", files: "agents/concierge.py · agents/tally.py · db.py" },
+    { c: ["hitl", "console"], title: "Escalated: human review queue", route: "Reviewer console → GET /escalations (X-API-Key)",
+      actions: ["The reviewer sees amount, risk score, reasons and product image.", "The customer sees \"a colleague will confirm this shortly\" and the offer is pending_review.",
+        "Reviewer identity comes from the staff key, not the request."],
+      why: "A human stays in control of risky spend.", files: "api/app.py · apps/storefront/streamlit_app.py" },
+    { c: ["hitl", "concierge", "tally", "sqlite"], title: "Reviewer decides", route: "runtime.invoke(resolve_escalation)",
+      actions: ["Compare-and-set pending → approved, then order, stock (for products), offer → accepted, and points in one transaction.", "A second concurrent approval fails cleanly (tested with 4 threads → 1 order).",
+        "Deny closes the escalation and declines the offer; nothing is charged."],
+      why: "HITL keeps the same integrity guarantees as the automated path.", files: "agents/concierge.py" },
+    { c: ["audit", "console"], title: "Outcome recorded", route: "Audit (kind=human) → Admin outcomes",
+      actions: ["The decision is audited with the reviewer principal.", "Admin shows offers composed and accepted, and pending, approved and denied escalations."],
+      why: "This feeds the Ring 1 commercial KPIs.", files: "platform/audit.py · reporting.py" },
+  ]},
+  { id: "loop", name: "③ Returns loop, loyalty & Ring-2 API", steps: [
+    { c: ["storefront", "care"], title: "Customer opens My orders", route: "GET /orders → CARE order_history",
+      actions: ["Orders and subscriptions with photos, sizes and return status."],
+      why: "Self-service is the first step of the learning loop.", files: "agents/care.py" },
+    { c: ["grade", "dal", "sqlite"], title: "Return graded by GRADE", route: "POST /returns → record_return",
+      actions: ["Validates that the order belongs to the customer and hasn't already been returned.", "Writes the return linked to its order_id with reason (e.g. too_small) and condition grade.",
+        "Fit reasons feed TAILOR; others feed RECLAIM recovery."],
+      why: "The return reason becomes structured, reusable signal.", files: "agents/stubs.py · data/returns.py" },
+    { c: ["tailor", "dal"], title: "TAILOR learns", route: "get_fit_profile recomputed on next request",
+      actions: ["The reason codes shift size direction; personal risk is re-shrunk to the baseline.", "Guidance effect = guided ÷ baseline return rate, measured from estate history (≈0.4)."],
+      why: "Prevention, not just processing: the next order is sized right.", files: "agents/tailor.py · data/fit.py" },
+    { c: ["storefront", "tailor"], title: "Next product page pre-selects the size", route: "POST /fit {sku} → size picker",
+      actions: ["The recommended size is pre-selected; the fit-check event is logged (it counts toward the Fit Pro badge).", "An optional free-text note is blended by the fast model or a template."],
+      why: "Guidance appears at the moment of decision.", files: "apps/storefront/streamlit_app.py" },
+    { c: ["concierge", "pace", "sentry", "sqlite"], title: "Purchase with integrity", route: "POST /orders → commit_order",
+      actions: ["Price from PACE, size must exist, quantity bounded 1–10.", "SENTRY approves, then stock decrement, order and points run in one transaction.",
+        "A replay with the same key returns the original order."],
+      why: "Server-side pricing and atomic stock.", files: "agents/concierge.py" },
+    { c: ["tally", "storefront"], title: "Loyalty that engages", route: "GET /loyalty · POST /loyalty/redeem",
+      actions: ["Tier progress, badges (Explorer, Fit Pro, On a roll, Keeper).", "Sam's £214 purchase upgrades him to Gold.",
+        "Redemption is bounded, can't overdraw and is idempotent per click."],
+      why: "UC5 is a real ledger, not a counter.", files: "agents/tally.py" },
+    { c: ["console", "audit", "sqlite"], title: "The outcome becomes measurable", route: "GET /admin/outcomes",
+      actions: ["Return rate: ≈35% baseline vs ≈14% after guidance (temporal split by order date).", "Engagement → purchase uses active engagement only; impressions are counted separately."],
+      why: "This is the evidence for outcome-based pricing (Ring 2/3).", files: "reporting.py" },
+    { c: ["mcpclient", "policy", "tailor"], title: "Partner consumes Size & Fit as a Service", route: "MCP adapter (Bearer key) → external_mcp principal",
+      actions: ["The partner calls get_fit_profile / get_customer_segment read-only.", "Write tools and self-declared callers are denied by the same policy engine."],
+      why: "The Ring 2 API rides on the same governed runtime.", files: "transports/mcp_server.py" },
+  ]},
+];
+
+const ADRS = [
+  { id: "ADR-001", t: "One runtime chokepoint with runtime-bound identity", s: "Accepted",
+    c: "The previous build let callers self-declare identity (\"caller\": \"lead_orchestrator\"), which made the allow-lists meaningless.",
+    d: "Every tool call goes through runtime.invoke(ctx, tool). The principal comes from authentication; nested calls run as the contract's owning agent.",
+    k: "Policy and audit become unconditional. Agents can't choose their identity, and slightly more ceremony is needed for staff tooling (API keys).", alt: "Signed per-agent JWTs (heavier for a single-process demo)." },
+  { id: "ADR-002", t: "Two-layer policy: tool ACL + slide-7 data-domain matrix", s: "Accepted",
+    c: "Agents read any table directly, so the deck's data-universe matrix was only drawn, not enforced.",
+    d: "Default-deny tool allow-lists plus a per-agent domain/mode/method matrix enforced by a domain data-access layer; contracts are validated at import.",
+    k: "Least privilege is provable in tests. Adding a domain to an agent is an explicit, reviewable change.", alt: "Database roles per agent (no per-tool granularity in SQLite)." },
+  { id: "ADR-003", t: "Money moves only on explicit customer action", s: "Accepted",
+    c: "A styling question auto-committed a paid subscription.",
+    d: "compose_offer is read-only; accept_offer, commit_order and resolve_escalation are the only commits; SENTRY scores every charge; risky ones go to humans.",
+    k: "Consent and auditability are built in. One extra click in the journey, which is intended.", alt: "Implicit acceptance via chat sentiment (rejected: not consent)." },
+  { id: "ADR-004", t: "Unit of work + idempotency keys + compare-and-set", s: "Accepted",
+    c: "Order and points were separate transactions; double-clicks duplicated orders; reviewers could race.",
+    d: "db.transaction() shares one connection across nested tool calls; UNIQUE idempotency keys; CAS on offer/escalation state; ledger UNIQUE(source, ref_id).",
+    k: "Exactly-once effects under concurrency, proven in tests. Needs an outbox/saga when domains split across services.", alt: "Distributed saga (overkill at demo scale)." },
+  { id: "ADR-005", t: "MCP as the authenticated external surface; direct calls inside", s: "Accepted",
+    c: "Internal calls made an in-process MCP round trip, making mcp a hard dependency, while the external server had no auth.",
+    d: "Agents invoke contracts directly through the runtime; the MCP adapter exposes them externally behind a Bearer key as the read-only external_mcp principal.",
+    k: "Fewer moving parts and a secure Ring 2 API. Internal traffic is not 'literally MCP', a deliberate trade.", alt: "Keep internal MCP behind a flag." },
+  { id: "ADR-006", t: "Capability-based model gateway with deterministic fallbacks", s: "Accepted",
+    c: "Different providers resolved the same tier to different model generations; prompts were hard-coded.",
+    d: "config/models.json maps capability → model per provider (reasoning/vision claude-opus-5-5 at medium effort with server-side refusal fallback, fast claude-haiku-4-5). Every caller supplies a deterministic fallback.",
+    k: "Vendor-neutral, swappable by config, never down because a model is. OpenRouter slugs must be verified.", alt: "SDK calls inside each agent (vendor lock-in, no governance)." },
+  { id: "ADR-007", t: "Versioned prompt registry with shared guard prompt and output filters", s: "Accepted",
+    c: "The deck requires governed, versioned prompts; customer text flowed straight into prompts.",
+    d: "YAML prompts with versions; a guard prompt prepended at run time; input cleaning; output filters for URLs, unsupported amounts and length; the version is recorded on every call.",
+    k: "Prompt changes are reviewable and traceable. An eval harness is still needed before changes ship.", alt: "Prompt management SaaS (deferred)." },
+  { id: "ADR-008", t: "Two-tier memory with a customer-scoped context object", s: "Accepted",
+    c: "Session keys weren't scoped to a customer; Redis availability latched on the first failure.",
+    d: "Short-term: one context object per (customer, session) in Redis with TTL, falling back to SQLite, re-probed after 30 s. Long-term: durable domain tables.",
+    k: "Follow-ups work and leakage between customers is impossible. Cross-device continuity depends on ONEBASKET.", alt: "Client-held session state (tamperable)." },
+  { id: "ADR-009", t: "Embedded vector retrieval with fallback and fingerprint reindex", s: "Accepted",
+    c: "The index was L2 while documented as cosine, and never refreshed after seeding.",
+    d: "Chroma collection with hnsw:space=cosine (score = 1 − distance) or a token-overlap index; rebuilt when the catalogue fingerprint changes; admin reindex endpoint.",
+    k: "Correct scores and a fresh index. The fallback is cruder; thresholds are per backend.", alt: "Managed vector DB (production path)." },
+  { id: "ADR-010", t: "Separate impressions from engagement", s: "Accepted",
+    c: "Every displayed recommendation was logged as a 'search', so recommendations boosted their own categories.",
+    d: "Recommendation grids log 'impression'; only search, browse and cart count as engagement for boosts and conversion metrics.",
+    k: "No self-reinforcing loop, honest conversion KPI.", alt: "Decay weighting (still biased)." },
+  { id: "ADR-011", t: "Single redacted audit writer, deferred after commit", s: "Accepted",
+    c: "Three audit writers, no trace correlation, raw PII in details, failures not logged.",
+    d: "One writer with trace_id, kind, latency, model, prompt version and outcome; redaction before write; rows flushed after the transaction ends.",
+    k: "End-to-end explainability without leaking PII. Audit isn't in the same transaction, so a crash can lose the last rows.", alt: "Write-ahead in the same transaction (lost on rollback)." },
+  { id: "ADR-012", t: "TAILOR risk = Bayesian shrinkage × measured guidance effect", s: "Accepted",
+    c: "Guided risk was a hard-coded 0.12 and return reasons were ignored.",
+    d: "Personal returns/orders shrunk toward the category baseline (K=4), multiplied by the estate's measured guided/baseline ratio when GRADE reasons give a size direction; SKU-level adjustment with enough history.",
+    k: "Explainable, data-derived risk that improves as returns are graded. Needs volume to stabilise.", alt: "ML fit model (future, once GRADE vision exists)." },
+  { id: "ADR-013", t: "Synthetic causal seed with local product photography", s: "Accepted",
+    c: "Demos need repeatable, realistic data and a credible retail look, with no real PII.",
+    d: "A fixed-seed generator where wrong sizes cause fit returns and guidance prevents them; six purpose-built personas; 63 Unsplash-licensed photos matched to product type and colour.",
+    k: "Repeatable demos whose KPIs emerge from the process. The data is synthetic and must never be presented as real performance.", alt: "Anonymised production extract (privacy risk)." },
+];
+
+/* ======================================================================= RENDER */
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("arch");
+const el = (tag, attrs = {}, parent) => { const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// bands + planes
+const bandsG = document.getElementById("layerBands");
+BANDS.forEach(b => {
+  el("rect", { x: 92, y: b.y, width: 1416, height: b.h, rx: 12, fill: b.fill, stroke: "#E5E2DA" }, bandsG);
+  const t = el("text", { x: 108, y: b.y + 17, class: "band-label" }, bandsG); t.textContent = b.label;
+});
+[["Security · Policy-as-code · PII & consent · Audit", 14], ["Evals · Observability · Traces · Cost", 1528]].forEach(([label, x]) => {
+  el("rect", { x, y: 20, width: 58, height: 1035, rx: 12, fill: x < 100 ? "#FCEBEB" : "#E9F5EE", stroke: x < 100 ? "#F3C9CF" : "#BFDCCB" }, bandsG);
+  const t = el("text", { x: x + 34, y: 537, class: "plane-text", transform: `rotate(-90 ${x + 34} 537)`, "text-anchor": "middle" }, bandsG);
+  t.textContent = label.toUpperCase();
+});
+
+// static links (layer to layer)
+const links = [["storefront", "api"], ["console", "api"], ["mcpclient", "runtime", "side"], ["api", "auth", "h"], ["api", "orchestrator"],
+  ["orchestrator", "intent"], ["orchestrator", "context"], ["orchestrator", "composer", "h"], ["orchestrator", "muse"], ["orchestrator", "persona"],
+  ["orchestrator", "concierge"], ["muse", "tailor", "h"], ["concierge", "sentry", "h"], ["concierge", "tally", "h2"], ["sentry", "hitl"],
+  ["runtime", "dal"], ["gateway", "providers"], ["dal", "sqlite", "h"]];
+const linksG = document.getElementById("staticLinks");
+const center = (id) => { const c = C[id]; return { x: c.x + c.w / 2, y: c.y + c.h / 2 }; };
+links.forEach(([f, t, mode]) => {
+  const A = C[f], B = C[t];
+  let x1, y1, x2, y2;
+  if (mode === "h" || mode === "h2") { x1 = A.x + A.w; y1 = A.y + A.h / 2 + (mode === "h2" ? 18 : 0); x2 = B.x; y2 = B.y + B.h / 2 + (mode === "h2" ? 18 : 0); }
+  else if (mode === "side") { x1 = A.x + A.w - 30; y1 = A.y + A.h; x2 = B.x + B.w; y2 = B.y + 10; }
+  else { const a1 = center(f), b1 = center(t); x1 = Math.min(Math.max(b1.x, A.x + 20), A.x + A.w - 20); y1 = A.y + A.h; x2 = Math.min(Math.max(x1, B.x + 20), B.x + B.w - 20); y2 = B.y;
+    if (B.y < A.y) { y1 = A.y; y2 = B.y + B.h; } }
+  if (mode === "side") el("path", { d: `M${x1},${y1} C${x1},${y1 + 300} ${1500},${y2 - 200} ${x2},${y2}`, fill: "none", stroke: "#C9C5BB", "stroke-width": 1.5, "stroke-dasharray": "4 4", "marker-end": "url(#arrowGrey)" }, linksG);
+  else el("line", { x1, y1, x2, y2, stroke: "#C9C5BB", "stroke-width": 1.5, "marker-end": "url(#arrowGrey)" }, linksG);
+});
+// platform spine label: all agents call through the runtime
+el("line", { x1: 1480, y1: 704, x2: 1480, y2: 760, stroke: "#C9C5BB", "stroke-width": 1.5, "stroke-dasharray": "3 4" }, linksG);
+
+// components
+const compG = document.getElementById("components");
+const compNodes = {};
+function wrap(text, max) { const words = text.split(" "); const lines = []; let line = "";
+  words.forEach(w => { if ((line + " " + w).trim().length > max) { lines.push(line.trim()); line = w; } else line += " " + w; });
+  if (line.trim()) lines.push(line.trim()); return lines; }
+Object.entries(C).forEach(([id, c]) => {
+  const g = el("g", { class: "comp", "data-id": id, tabindex: 0 }, compG);
+  const [fillVar, strokeVar] = T[c.t];
+  el("rect", { class: "box", x: c.x, y: c.y, width: c.w, height: c.h, rx: 10, fill: css(fillVar), stroke: css(strokeVar), "stroke-width": 1.6 }, g);
+  const tt = el("text", { x: c.x + 14, y: c.y + 25, class: "c-title" }, g); tt.textContent = c.title;
+  const maxChars = Math.floor((c.w - 28) / 6.1);
+  wrap(c.sub, maxChars).slice(0, 2).forEach((line, i) => { const s = el("text", { x: c.x + 14, y: c.y + 44 + i * 15, class: "c-sub" }, g); s.textContent = line; });
+  const title = el("title", {}, g); title.textContent = c.title + " — click for details";
+  g.addEventListener("click", (e) => { if (!dragMoved) showComponent(id); });
+  compNodes[id] = g;
+});
+
+/* ======================================================================= VIEWBOX / ZOOM / PAN */
+const FULL = { x: 0, y: 0, w: 1600, h: 1065 };
+let vb = { ...FULL }, anim = null;
+function setVB(v) { vb = v; svg.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`); }
+function animateTo(target, ms = 650) {
+  cancelAnimationFrame(anim); const from = { ...vb }; const t0 = performance.now();
+  const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = (now) => { const p = Math.min(1, (now - t0) / ms), e = ease(p);
+    setVB({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, w: from.w + (target.w - from.w) * e, h: from.h + (target.h - from.h) * e });
+    if (p < 1) anim = requestAnimationFrame(step); };
+  anim = requestAnimationFrame(step);
+}
+function boxFor(ids, pad = 70) {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  ids.forEach(id => { const c = C[id]; x1 = Math.min(x1, c.x); y1 = Math.min(y1, c.y); x2 = Math.max(x2, c.x + c.w); y2 = Math.max(y2, c.y + c.h); });
+  x1 -= pad; y1 -= pad; x2 += pad; y2 += pad;
+  let w = x2 - x1, h = y2 - y1; const ratio = FULL.w / FULL.h;
+  if (w / h > ratio) { const nh = w / ratio; y1 -= (nh - h) / 2; h = nh; } else { const nw = h * ratio; x1 -= (nw - w) / 2; w = nw; }
+  if (w < 620) { const s = 620 / w; x1 -= (w * s - w) / 2; y1 -= (h * s - h) / 2; w *= s; h *= s; }
+  return { x: x1, y: y1, w, h };
+}
+svg.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(anim);
+  const r = svg.getBoundingClientRect(); const mx = vb.x + (e.clientX - r.left) / r.width * vb.w, my = vb.y + (e.clientY - r.top) / r.height * vb.h;
+  const s = e.deltaY > 0 ? 1.12 : 1 / 1.12; const w = Math.min(2400, Math.max(300, vb.w * s)), h = w * FULL.h / FULL.w;
+  setVB({ x: mx - (mx - vb.x) * (w / vb.w), y: my - (my - vb.y) * (h / vb.h), w, h }); }, { passive: false });
+let drag = null, dragMoved = false;
+svg.addEventListener("mousedown", (e) => { drag = { x: e.clientX, y: e.clientY, vb: { ...vb } }; dragMoved = false; svg.classList.add("dragging"); });
+window.addEventListener("mousemove", (e) => { if (!drag) return; const r = svg.getBoundingClientRect();
+  const dx = (e.clientX - drag.x) / r.width * vb.w, dy = (e.clientY - drag.y) / r.height * vb.h;
+  if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) dragMoved = true;
+  if (dragMoved) { cancelAnimationFrame(anim); setVB({ ...vb, x: drag.vb.x - dx, y: drag.vb.y - dy }); } });
+window.addEventListener("mouseup", () => { drag = null; svg.classList.remove("dragging"); setTimeout(() => dragMoved = false, 0); });
+
+/* ======================================================================= FLOWS & STEPS */
+let flowIdx = 0, stepIdx = -1, playing = null;
+const tabs = document.getElementById("flowTabs");
+FLOWS.forEach((f, i) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = f.name;
+  b.addEventListener("click", () => selectFlow(i)); tabs.appendChild(b); tabs.appendChild(document.createTextNode(" ")); });
+
+function badgePositions(flow) {
+  const used = {};
+  return flow.steps.map(s => { const id = s.c[0], c = C[id]; const k = used[id] = (used[id] || 0) + 1;
+    return { x: c.x + c.w - 20 - (k - 1) * 36, y: c.y + 2 }; });
+}
+function renderFlow() {
+  const flow = FLOWS[flowIdx], pos = badgePositions(flow);
+  const flowG = document.getElementById("flowLayer"), badgeG = document.getElementById("badges");
+  flowG.innerHTML = ""; badgeG.innerHTML = "";
+  el("path", { class: "flowpath", d: "M" + pos.map(p => `${p.x},${p.y}`).join(" L") }, flowG);
+  if (stepIdx > 0) el("path", { class: "flowseg", d: `M${pos[stepIdx - 1].x},${pos[stepIdx - 1].y} L${pos[stepIdx].x},${pos[stepIdx].y}`, "marker-end": "url(#arrow)" }, flowG);
+  flow.steps.forEach((s, i) => {
+    const g = el("g", { class: "badge" + (i === stepIdx ? " current" : i < stepIdx ? " done" : ""), tabindex: 0 }, badgeG);
+    el("circle", { cx: pos[i].x, cy: pos[i].y, r: 15 }, g);
+    const t = el("text", { x: pos[i].x, y: pos[i].y + 4.5, "text-anchor": "middle" }, g); t.textContent = i + 1;
+    const tt = el("title", {}, g); tt.textContent = `Step ${i + 1}: ${s.title}`;
+    g.addEventListener("click", (e) => { e.stopPropagation(); stopPlay(); goStep(i); });
+    g.addEventListener("mousedown", (e) => e.stopPropagation());
+  });
+  [...tabs.children].forEach((b, i) => b.classList.toggle("on", i === flowIdx));
+  document.getElementById("progressBar").style.width = stepIdx < 0 ? "0" : `${(stepIdx + 1) / flow.steps.length * 100}%`;
+  document.getElementById("prevBtn").disabled = stepIdx <= 0;
+  document.getElementById("nextBtn").disabled = stepIdx >= flow.steps.length - 1;
+}
+function highlight(ids) {
+  Object.entries(compNodes).forEach(([id, g]) => { g.classList.toggle("active", ids.includes(id)); g.classList.toggle("dim", ids.length > 0 && !ids.includes(id)); });
+}
+function goStep(i) {
+  const flow = FLOWS[flowIdx]; stepIdx = Math.max(0, Math.min(flow.steps.length - 1, i));
+  const s = flow.steps[stepIdx]; highlight(s.c); animateTo(boxFor(s.c)); renderFlow();
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no">${stepIdx + 1}</span><span class="step-title">${s.title}</span>
+      <span class="step-route">${s.route}</span><span class="spacer"></span>
+      <span class="pill">${flow.name} · step ${stepIdx + 1} of ${flow.steps.length}</span></div>
+    <div class="step-body">
+      <div><h4>Actions performed in this step</h4><ol>${s.actions.map(x => `<li>${x}</li>`).join("")}</ol></div>
+      <div><h4>Why it matters</h4><p style="margin:0 0 10px">${s.why}</p>
+        <h4>Components</h4><p style="margin:0 0 10px">${s.c.map(id => `<span class="pill red">${C[id].title}</span>`).join("")}</p>
+        <h4>Implemented in</h4><p style="margin:0"><code>${s.files}</code></p></div>
+    </div>`;
+}
+function showComponent(id) {
+  stopPlay(); const c = C[id]; highlight([id]); animateTo(boxFor([id], 110));
+  const inSteps = []; FLOWS.forEach(f => f.steps.forEach((s, i) => { if (s.c.includes(id)) inSteps.push(`${f.name.split(" ")[0]} step ${i + 1}`); }));
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no" style="background:var(--ink)">i</span><span class="step-title">${c.title}</span><span class="step-route">${c.sub}</span></div>
+    <div class="step-body"><div><h4>Responsibility</h4><p style="margin:0">${c.desc}</p></div>
+      <div><h4>Implemented in</h4><p style="margin:0 0 10px"><code>${c.files}</code></p>
+      <h4>Appears in</h4><p style="margin:0">${inSteps.length ? inSteps.map(s => `<span class="pill">${s}</span>`).join("") : "—"}</p></div></div>`;
+}
+function selectFlow(i) { stopPlay(); flowIdx = i; stepIdx = -1; renderFlow(); highlight([]); animateTo(FULL); introPanel(); }
+function introPanel() {
+  const f = FLOWS[flowIdx];
+  document.getElementById("stepPanel").innerHTML = `
+    <div class="step-head"><span class="step-no">▶</span><span class="step-title">${f.name}</span>
+      <span class="step-route">${f.steps.length} steps · click badge <b>1</b> or press Next / Play</span></div>
+    <div class="step-body"><div><h4>Steps in this flow</h4><ol>${f.steps.map((s, i) => `<li><a href="#" data-step="${i}">${s.title}</a></li>`).join("")}</ol></div>
+    <div><h4>How to read the diagram</h4><p style="margin:0">Numbered red badges mark where each step happens. The dashed red line traces the order.
+      The current step's components glow and the rest fade. Bands run top-down from channels to data; the left and right planes are cross-cutting
+      (policy and observability apply to every call).</p></div></div>`;
+  document.querySelectorAll("#stepPanel a[data-step]").forEach(a => a.addEventListener("click", (e) => { e.preventDefault(); goStep(+a.dataset.step); }));
+}
+function stopPlay() { if (playing) { clearInterval(playing); playing = null; document.getElementById("playBtn").textContent = "▶ Play"; } }
+document.getElementById("nextBtn").onclick = () => { stopPlay(); goStep(stepIdx + 1); };
+document.getElementById("prevBtn").onclick = () => { stopPlay(); goStep(stepIdx - 1); };
+document.getElementById("fitBtn").onclick = () => { stopPlay(); highlight([]); animateTo(FULL); };
+document.getElementById("playBtn").onclick = () => {
+  if (playing) return stopPlay();
+  document.getElementById("playBtn").textContent = "❚❚ Pause";
+  if (stepIdx >= FLOWS[flowIdx].steps.length - 1) stepIdx = -1;
+  goStep(stepIdx + 1);
+  playing = setInterval(() => { if (stepIdx >= FLOWS[flowIdx].steps.length - 1) return stopPlay(); goStep(stepIdx + 1); }, 4500);
+};
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const r = svg.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight) return;
+  if (e.key === "ArrowRight") { stopPlay(); goStep(stepIdx + 1); }
+  if (e.key === "ArrowLeft") { stopPlay(); goStep(stepIdx - 1); }
+  if (e.key === "Escape") { stopPlay(); highlight([]); animateTo(FULL); }
+});
+
+// ADRs
+document.getElementById("adrList").innerHTML = ADRS.map((r, i) => `
+  <details class="adr"${i === 0 ? " open" : ""}>
+    <summary><span class="id">${r.id}</span><span class="t">${r.t}</span><span class="pill green">${r.s}</span></summary>
+    <div class="adr-body">
+      <div><b>Context</b><p>${r.c}</p></div><div><b>Decision</b><p>${r.d}</p></div>
+      <div><b>Consequences</b><p>${r.k}</p></div><div><b>Alternatives considered</b><p>${r.alt}</p></div>
+    </div>
+  </details>`).join("");
+
+selectFlow(0);
+</script>
+</body>
+</html>
